@@ -30,6 +30,14 @@ def create_working_copies(
     return WorkingCopies(original=original, marked=marked)
 
 
+def recreate_marked_copy(bundle: Bundle, ir: DocumentIR, marked: Path) -> None:
+    # Start the marked copy over from the original source files
+    if marked.exists():
+        shutil.rmtree(marked)
+    _copy_bundle(bundle, marked)
+    _apply_replacements(marked, _missing_image_replacements(ir))
+
+
 def _copy_bundle(bundle: Bundle, destination: Path) -> None:
     # Copy normalized project files without touching source inputs
     destination.mkdir(parents=True)

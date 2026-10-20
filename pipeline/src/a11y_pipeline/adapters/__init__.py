@@ -1,3 +1,4 @@
+import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -5,10 +6,16 @@ from typing import Any
 from a11y_pipeline.adapters.base import PreparedDocument, SourceAdapter, WrittenDocument
 from a11y_pipeline.adapters.tex_beamer.aux_reader import apply_aux_mapping, read_aux
 from a11y_pipeline.adapters.tex_beamer.builder import build, summarize
-from a11y_pipeline.adapters.tex_beamer.compile import compile_project
-from a11y_pipeline.adapters.tex_beamer.markers import inject_markers
+from a11y_pipeline.adapters.tex_beamer.compile import (
+    CompileError,
+    CompileResult,
+    compile_project,
+    errors_beyond,
+    tex_version,
+)
 from a11y_pipeline.adapters.tex_beamer.parser import parse
 from a11y_pipeline.adapters.tex_beamer.preflight import preflight
+from a11y_pipeline.adapters.tex_beamer.recovery import compile_marked_copy
 from a11y_pipeline.adapters.tex_beamer.working_copy import create_working_copies
 from a11y_pipeline.adapters.tex_beamer.writer import verify_updated_project, write_updated_project
 from a11y_pipeline.bundle.bundle import Bundle
@@ -18,7 +25,7 @@ from a11y_pipeline.evaluation.concepts import (
     infer_tikz_labels,
 )
 from a11y_pipeline.evaluation.hidden_labels import detect_figure_hidden_labels
-from a11y_pipeline.ir.models import DocumentIR, Element
+from a11y_pipeline.ir.models import DocumentIR, Element, Issue
 from a11y_pipeline.render.crop import crop_pdf_bbox
 from a11y_pipeline.render.pixeldiff import compare_pdf_pixels, visual_change_issues
 
@@ -46,10 +53,22 @@ class TexBeamerAdapter:
         # Compile map and prepare Beamer figure inputs
         working_ir = ir.model_copy(deep=True)
         copies = create_working_copies(bundle, working_ir, run_root / "work")
-        inject_markers(working_ir, copies.marked, run_root / "injection_table.json")
-        original = compile_project(copies.original, bundle.main_file, timeout_seconds)
-        marked = compile_project(copies.marked, bundle.main_file, timeout_seconds)
-        mapped = apply_aux_mapping(working_ir, read_aux(marked.aux_path))
+        # Compile the user's own source the way Overleaf does: keep going past recoverable errors
+        original = compile_project(copies.original, bundle.main_file, timeout_seconds, strict=False)
+        marked_copy = compile_marked_copy(
+            bundle,
+            working_ir,
+            copies.marked,
+            run_root / "injection_table.json",
+            lambda root: _compile_marked(root, bundle.main_file, timeout_seconds, original),
+        )
+        marked = marked_copy.compiled
+        mapped = apply_aux_mapping(marked_copy.ir, read_aux(marked.aux_path))
+        engine = tex_version()
+        if engine:
+            mapped.metadata["render_engine"] = engine
+        if original.errors:
+            mapped.issues.append(_tolerated_errors_issue(original.errors, original.error_messages))
         pixel_check = compare_pdf_pixels(original.pdf_path, marked.pdf_path)
         mapped.issues.extend(visual_change_issues(mapped, pixel_check))
         figure_inputs = _figure_inputs(mapped, original.pdf_path, run_root / "crops")
@@ -88,6 +107,44 @@ class TexBeamerAdapter:
             operations=result.operations,
             pixel_check=verification.pixel_check,
         )
+
+
+def _compile_marked(
+    root: Path,
+    main_file: str,
+    timeout_seconds: int,
+    original: CompileResult,
+) -> CompileResult:
+    # The tracked copy may repeat errors the original already has, but must add none of its own
+    if original.errors == 0:
+        return compile_project(root, main_file, timeout_seconds)
+    result = compile_project(root, main_file, timeout_seconds, strict=False)
+    added = errors_beyond(original.error_messages, result.error_messages)
+    if not added:
+        return result
+    location = re.match(r"^([^\s:]+\.\w+):(\d+): (.*)$", added[0])
+    raise CompileError(
+        added[0],
+        source_file=location.group(1) if location else main_file,
+        line=int(location.group(2)) if location else None,
+        tex_error=location.group(3) if location else added[0],
+        log_path=result.log_path,
+    )
+
+
+def _tolerated_errors_issue(count: int, messages: tuple[str, ...]) -> Issue:
+    # Tell the user what pdfLaTeX reported without calling the render a failure
+    first = messages[0] if messages else "see the compile log"
+    return Issue(
+        element_id=None,
+        code="tex_errors_tolerated",
+        severity="info",
+        message=(
+            f"pdfLaTeX reported {count} recoverable error(s) but still produced the PDF, "
+            f"as Overleaf does. First: {first}"
+        ),
+        details={"count": count, "messages": list(messages[:10])},
+    )
 
 
 ADAPTER_REGISTRY: dict[str, SourceAdapter] = {

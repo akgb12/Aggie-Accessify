@@ -22,6 +22,7 @@ def inject_markers(
     ir: DocumentIR,
     marked_root: Path,
     injection_table_path: Path | None = None,
+    skip_containers: frozenset[str] | set[str] = frozenset(),
 ) -> list[InjectionRecord]:
     # Inject invisible markers and assign container local identifiers
     events: dict[str, list[tuple[int, int, str]]] = {}
@@ -30,6 +31,9 @@ def inject_markers(
     for container in ir.containers:
         ordered = _reading_order(ir, container.element_ids)
         options = str(container.attrs.get("options", ""))
+        if container.id in skip_containers:
+            _record_recovery_issue(ir, container.id)
+            continue
         if "fragile" in options.lower():
             _record_fragile_issue(ir, container.id)
             continue
@@ -106,6 +110,22 @@ def _record_fragile_issue(ir: DocumentIR, container_id: str) -> None:
             code="unmarked_fragile",
             severity="warning",
             message=f"Fragile frame {container_id} was left unmarked",
+            details={"container_id": container_id},
+        )
+    )
+
+
+def _record_recovery_issue(ir: DocumentIR, container_id: str) -> None:
+    # Record that a slide was left untagged so the rest of the deck could still be processed
+    ir.issues.append(
+        Issue(
+            element_id=None,
+            code="unmarked_recovered",
+            severity="warning",
+            message=(
+                f"Slide {container_id} was left untagged because adding tracking to it "
+                "broke compilation. Your source is fine."
+            ),
             details={"container_id": container_id},
         )
     )

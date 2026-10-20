@@ -5,7 +5,11 @@ import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 
-from a11y_pipeline.adapters.tex_beamer.compile import CompileResult, compile_project
+from a11y_pipeline.adapters.tex_beamer.compile import (
+    CompileError,
+    CompileResult,
+    compile_project,
+)
 from a11y_pipeline.bundle.bundle import Bundle
 from a11y_pipeline.ir.models import DocumentIR, Element, Issue
 from a11y_pipeline.render.pixeldiff import PixelCheck, compare_pdf_pixels
@@ -71,7 +75,10 @@ def verify_updated_project(
     timeout_seconds: int = 180,
 ) -> UpdatedProjectVerification:
     # Compile an updated project and compare every rendered page
-    compile_result = compile_project(project_root, main_file, timeout_seconds)
+    try:
+        compile_result = compile_project(project_root, main_file, timeout_seconds, strict=False)
+    except CompileError as error:
+        raise error.as_internal() from error
     pixel_check = compare_pdf_pixels(original_pdf, compile_result.pdf_path, dpi=dpi)
     return UpdatedProjectVerification(
         compile_result=compile_result,

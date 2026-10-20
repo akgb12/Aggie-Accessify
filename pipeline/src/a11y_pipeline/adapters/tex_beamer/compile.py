@@ -1,9 +1,12 @@
 import re
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from functools import cache
 from pathlib import Path
 
 import pikepdf
+
+MAX_RECORDED_ERRORS = 200
 
 
 @dataclass(frozen=True)
@@ -13,6 +16,8 @@ class CompileResult:
     log_path: Path
     page_count: int
     errors: int
+    # First TeX errors that were tolerated because a PDF was still produced
+    error_messages: tuple[str, ...] = field(default_factory=tuple)
 
 
 class CompileError(RuntimeError):
@@ -31,26 +36,45 @@ class CompileError(RuntimeError):
         self.line = line
         self.tex_error = tex_error
         self.log_path = log_path
+        # "source": the user's own project failed; "internal": one of our modified copies did
+        self.blame = "source"
+
+    def as_internal(self) -> "CompileError":
+        # Mark this failure as ours so it is never reported as a problem with the user's file
+        self.blame = "internal"
+        return self
+
+    @property
+    def user_message(self) -> str:
+        # Wording that is fair to the user about who needs to act
+        detail = str(self)
+        if self.blame == "internal":
+            return (
+                "We hit an internal problem while preparing your slides for tagging. "
+                "Your own file compiled normally, so there is nothing to fix in it. "
+                f"(Technical detail: {detail})"
+            )
+        return (
+            "pdfLaTeX could not produce a PDF from this project, which is the same step "
+            f"Overleaf runs. First error: {detail}"
+        )
 
 
 def compile_project(
     project_root: Path,
     main_file: str,
     timeout_seconds: int = 180,
+    strict: bool = True,
 ) -> CompileResult:
-    # Compile one isolated project with pdfLaTeX through latexmk
+    # Compile one isolated project with pdfLaTeX through latexmk. Strict mode stops at the first
+    # error. Tolerant mode keeps going like Overleaf does and succeeds when a PDF is produced.
     root = project_root.resolve()
     main_path = root / main_file
     if not main_path.is_file():
         raise FileNotFoundError(f"Main TeX file does not exist: {main_file}")
-    command = [
-        "latexmk",
-        "-pdf",
-        "-interaction=nonstopmode",
-        "-halt-on-error",
-        "-file-line-error",
-        main_file,
-    ]
+    command = ["latexmk", "-pdf", "-interaction=nonstopmode"]
+    command.append("-halt-on-error" if strict else "-f")
+    command.extend(["-file-line-error", main_file])
     output_path = root / "latexmk_output.log"
     try:
         completed = subprocess.run(
@@ -77,7 +101,9 @@ def compile_project(
     error_source = output
     if tex_log.is_file():
         error_source = tex_log.read_text(encoding="utf-8", errors="replace")
-    if completed.returncode != 0:
+    pdf_ready = main_path.with_suffix(".pdf").is_file() and main_path.with_suffix(".aux").is_file()
+    tolerated = not strict and pdf_ready
+    if completed.returncode != 0 and not tolerated:
         tex_error, line = _first_tex_error(error_source)
         error_file, reported_line, reported_error = _first_file_error(output)
         if error_file is None:
@@ -109,13 +135,62 @@ def compile_project(
         )
     with pikepdf.open(pdf_path) as pdf:
         page_count = len(pdf.pages)
+    messages = _all_file_errors(output) if completed.returncode != 0 else []
     return CompileResult(
         pdf_path=pdf_path,
         aux_path=aux_path,
         log_path=output_path,
         page_count=page_count,
-        errors=0,
+        errors=len(messages),
+        error_messages=tuple(messages[:MAX_RECORDED_ERRORS]),
     )
+
+
+def _all_file_errors(output: str) -> list[str]:
+    # List distinct "file:line: message" TeX errors in order of appearance
+    found: list[str] = []
+    for match in re.finditer(r"^(?:\./)?([^\s:]+\.\w+):(\d+): (.+)$", output, re.MULTILINE):
+        message = f"{match.group(1)}:{match.group(2)}: {match.group(3).strip()}"
+        if message not in found:
+            found.append(message)
+    return found
+
+
+def error_text(message: str) -> str:
+    # Drop the "file:line:" prefix so the same error at a shifted line still compares equal
+    return re.sub(r"^[^\s:]+\.\w+:\d+: ", "", message)
+
+
+def errors_beyond(baseline: tuple[str, ...], candidate: tuple[str, ...]) -> list[str]:
+    # List candidate errors that appear more often than in the baseline compile
+    remaining: dict[str, int] = {}
+    for message in baseline:
+        remaining[error_text(message)] = remaining.get(error_text(message), 0) + 1
+    extra: list[str] = []
+    for message in candidate:
+        key = error_text(message)
+        if remaining.get(key, 0) > 0:
+            remaining[key] -= 1
+        else:
+            extra.append(message)
+    return extra
+
+
+@cache
+def tex_version() -> str | None:
+    # Report the pdfTeX and TeX Live release used, so results can be compared with Overleaf
+    try:
+        completed = subprocess.run(
+            ["pdflatex", "--version"],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    first_line = completed.stdout.strip().splitlines()[:1]
+    return first_line[0].strip() if first_line else None
 
 
 def _timeout_output(error: subprocess.TimeoutExpired) -> str:
