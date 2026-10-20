@@ -117,3 +117,31 @@ def test_pdf_bbox_conversion_flips_vertical_coordinates() -> None:
     )
 
     assert converted == (96, 796, 304, 904)
+
+
+def test_marker_injection_leaves_empty_metadata_fields_untouched(tmp_path: Path) -> None:
+    # An empty \\date{} has nothing to tag; wrapping it would leak a marker into the preamble
+    project = tmp_path / "input"
+    project.mkdir()
+    source = (
+        "\\documentclass{beamer}\n"
+        "\\title{Real title}\n"
+        "\\date{}\n"
+        "\\begin{document}\n"
+        "\\begin{frame}\n"
+        "\\titlepage\n"
+        "\\end{frame}\n"
+        "\\end{document}\n"
+    )
+    (project / "main.tex").write_text(source, encoding="utf-8")
+    bundle = Bundle.from_path(project)
+    ir = build(parse_file(project))
+    copies = create_working_copies(bundle, ir, tmp_path / "work")
+
+    records = inject_markers(ir, copies.marked)
+    marked = (copies.marked / "main.tex").read_text(encoding="utf-8")
+
+    assert "\n\\date{}\n" in marked
+    assert "{}\\aelspan" not in marked
+    assert r"\aelspan{slide_01-title_page_01-document_title_01}{0}{H1}" in marked
+    assert [record.mcid for record in records] == list(range(len(records)))

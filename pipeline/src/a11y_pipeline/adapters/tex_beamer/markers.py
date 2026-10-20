@@ -38,10 +38,13 @@ def inject_markers(
             tag = _marker_tag(element)
             if tag is None:
                 continue
+            start, end = _content_bounds(element)
+            if _is_empty_body(element, start, end):
+                # Nothing to tag, and wrapping an empty \date{} would put the marker outside it
+                continue
             element.mcid = mcid
             key = element.id.replace("/", "-")
             prefix, suffix = _marker_text(key, mcid, tag, element.semantic_type)
-            start, end = _content_bounds(element)
             start = _translated_position(replacements, element.source.file, start, False)
             end = _translated_position(replacements, element.source.file, end, True)
             file_events = events.setdefault(element.source.file, [])
@@ -135,6 +138,13 @@ def _marker_text(
     if semantic_type == "figure":
         return rf"\aelfigure{{{key}}}{{{mcid}}}{{", "}"
     return rf"\aelspan{{{key}}}{{{mcid}}}{{{tag}}}{{", "}"
+
+
+def _is_empty_body(element: Element, start: int, end: int) -> bool:
+    # Detect a span whose marked body has no content, such as an empty \date{}
+    raw = element.source.raw or ""
+    base = element.source.char_start
+    return not raw[start - base : end - base].strip()
 
 
 def _marker_alt(element: Element) -> str | None:
