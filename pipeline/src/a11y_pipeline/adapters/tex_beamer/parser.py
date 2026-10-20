@@ -35,6 +35,8 @@ WRAPPER_ENVIRONMENTS = {
     "flushright",
     "minipage",
 }
+# Wrappers that take an optional [...] argument; column and minipage also take a {width}
+SIZED_WRAPPERS = {"columns", "column", "minipage"}
 MATH_ENVIRONMENTS = {
     "equation",
     "equation*",
@@ -538,14 +540,37 @@ class _Parser:
         return records
 
     def _wrapper_content_start(self, node: LatexEnvironmentNode) -> int:
-        # Skip required width arguments on transparent sizing wrappers
+        # Skip optional and required arguments on transparent sizing wrappers
         start = node.pos + len(r"\begin{" + node.environmentname + "}")
-        if node.environmentname != "column" and node.environmentname != "minipage":
+        if node.environmentname not in SIZED_WRAPPERS:
+            return start
+        start = self._after_optional_argument(start)
+        if node.environmentname == "columns":
             return start
         group = self._group_at(node.nodelist, start)
         if group is None:
             return start
         return group.pos + group.len
+
+    def _after_optional_argument(self, start: int) -> int:
+        # Return the position after a bracketed option list, which may contain macros
+        position = start
+        while position < len(self.text) and self.text[position] in " \t":
+            position += 1
+        if position >= len(self.text) or self.text[position] != "[":
+            return start
+        depth = 0
+        for index in range(position + 1, len(self.text)):
+            character = self.text[index]
+            if character == "{":
+                depth += 1
+            elif character == "}":
+                depth -= 1
+            elif character == "]" and depth <= 0:
+                return index + 1
+            elif character == "\n" and self.text[index + 1 : index + 2] == "\n":
+                break
+        return start
 
     def _list(self, node: LatexEnvironmentNode) -> NativeRecord:
         # Build list items with nested structure and exact end spans
