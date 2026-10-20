@@ -52,7 +52,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if arguments.command == "run":
             return _run_command(arguments)
     except (OSError, RuntimeError, ValueError) as error:
-        print(f"error: {error}", file=sys.stderr)
+        print(f"error: {getattr(error, 'user_message', error)}", file=sys.stderr)
         return 1
     parser.error("Unknown command")
     return 2

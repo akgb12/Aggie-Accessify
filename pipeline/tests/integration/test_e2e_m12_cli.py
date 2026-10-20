@@ -93,6 +93,7 @@ def test_a11y_run_materializes_every_m12_artifact(
     assert manifest["totals"]["candidates"] == 3
     assert manifest["totals"]["input_tokens"] == 24
     assert manifest["totals"]["output_tokens"] == 16
+    assert "TeX Live" in manifest["versions"]["render_engine"]
     assert len(manifest["pages"]) == len(list((run_root / "pages").glob("*.png")))
     first_page = manifest["pages"][0]
     assert first_page["number"] == 1

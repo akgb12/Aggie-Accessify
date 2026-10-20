@@ -39,9 +39,11 @@ function InfoTile({ label, value, sub }: { label: string; value: ReactNode; sub?
 export default function ReviewSummary({
   run,
   attentionCount,
+  renderEngine,
 }: {
   run: Run
   attentionCount: number
+  renderEngine: string | null
 }) {
   return (
     <div className="space-y-4">
@@ -68,6 +70,11 @@ export default function ReviewSummary({
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
         <p className="text-sm text-slate-600">
           Stopped because <Badge tone="brand">{run.stop_reason.replace(/_/g, ' ') || 'unknown'}</Badge>
+          {renderEngine && (
+            <span className="ml-3 text-xs text-slate-400" title="The LaTeX release used to render your slides">
+              Rendered with {renderEngine}
+            </span>
+          )}
         </p>
         <div className="flex flex-wrap gap-2">
           <a className={buttonClasses('primary', 'sm')} href={artifactUrl(run.id, 'output/tagged.pdf')}>

@@ -75,7 +75,7 @@ export default function ReviewView({ run, review }: { run: Run; review: Review }
 
   return (
     <div className="space-y-5">
-      <ReviewSummary run={run} attentionCount={attentionCount} />
+      <ReviewSummary run={run} attentionCount={attentionCount} renderEngine={review.render_engine} />
 
       <div>
         <h2 className="mb-2 text-sm font-semibold text-slate-700">Show on slides</h2>

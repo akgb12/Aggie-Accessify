@@ -49,10 +49,18 @@ def run_pipeline_task(run_id: str) -> str:
     except Exception as error:
         run.status = Run.Status.FAILED
         run.finished_at = timezone.now()
-        run.error_message = f"{type(error).__name__}: Pipeline run failed"
+        run.error_message = _user_message(error)
         run.save(update_fields=["status", "finished_at", "error_message"])
         raise
     return str(run.id)
+
+
+def _user_message(error: Exception) -> str:
+    # Prefer a message that is fair about who needs to act; never include credentials
+    message = getattr(error, "user_message", None)
+    if isinstance(message, str) and message:
+        return message[:800]
+    return f"{type(error).__name__}: Pipeline run failed"
 
 
 def _update_completed_run(run: Run, root: Path, completed: object) -> None:

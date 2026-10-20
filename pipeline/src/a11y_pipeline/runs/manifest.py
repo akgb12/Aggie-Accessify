@@ -70,6 +70,7 @@ def build_manifest(
         "versions": {
             "python": platform.python_version(),
             "a11y_pipeline": _package_version(),
+            "render_engine": _render_engine(state),
             "schema": state.base_ir.schema_version if state.base_ir is not None else None,
         },
         "effort": state.effort,
@@ -108,6 +109,14 @@ def _sha256(path: Path) -> str:
                 break
             digest.update(block)
     return digest.hexdigest()
+
+
+def _render_engine(state: RunState) -> str | None:
+    # The tool that rendered the source, recorded by the source adapter
+    document = state.final_ir or state.base_ir
+    if document is None:
+        return None
+    return document.metadata.get("render_engine") or None
 
 
 def _package_version() -> str:

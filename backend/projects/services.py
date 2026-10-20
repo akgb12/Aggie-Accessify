@@ -152,11 +152,13 @@ def build_review(run: Run) -> dict[str, object]:
     for name in list_run_files(prefix, "candidates"):
         if name.endswith(".json"):
             history.append(read_run_json(prefix, f"candidates/{name}"))
+    manifest = read_run_json(prefix, "manifest.json")
     return {
         "run_id": str(run.id),
+        "render_engine": manifest.get("versions", {}).get("render_engine"),
         "containers": ir["containers"],
         "elements": elements,
-        "pages": _page_payloads(run, read_run_json(prefix, "manifest.json")),
+        "pages": _page_payloads(run, manifest),
         "scores": {"accessibility": run.a_score, "fidelity": run.f_score},
         "stop_reason": run.stop_reason,
         "round_history": history,
