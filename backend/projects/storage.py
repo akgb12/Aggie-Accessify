@@ -119,12 +119,18 @@ def save_missing_slot(project: Project, slot: str, upload: object) -> ProjectFil
     return save_project_file(project, destination, upload)
 
 
-def materialize_project(project: Project, destination: Path) -> None:
-    # Copy all project files from storage into a bundle folder
+def materialize_project(
+    project: Project,
+    destination: Path,
+    only_suffixes: tuple[str, ...] | None = None,
+) -> None:
+    # Copy project files (all, or only some file types) from storage into a bundle folder
     destination.mkdir(parents=True, exist_ok=True)
     root = destination.resolve()
     for project_file in project.files.all():
         relative = validate_relative_path(project_file.path)
+        if only_suffixes is not None and not relative.lower().endswith(only_suffixes):
+            continue
         output = (root / relative).resolve()
         if not output.is_relative_to(root):
             raise UnsafePathError("Stored project path escapes the bundle")

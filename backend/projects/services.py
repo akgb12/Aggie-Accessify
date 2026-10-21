@@ -98,12 +98,20 @@ def _blocked_preflight(problem: dict[str, str], candidates: list[str]) -> dict[s
     }
 
 
+def project_targets(project: Project) -> list[str]:
+    # List the Beamer files that can be translated, reading only the .tex sources
+    with scratch_dir("targets") as scratch:
+        materialize_project(project, scratch / "bundle", only_suffixes=(".tex",))
+        return list_beamer_main_files(scratch / "bundle")
+
+
 def artifact_key(run: Run, relative_path: str) -> str:
     # Resolve one approved downloadable run artifact to its storage key
     relative = validate_relative_path(relative_path)
     allowed = relative in DOWNLOADABLE_ARTIFACTS
     path = PurePosixPath(relative)
-    if len(path.parts) == 2 and path.parts[0] == "pages" and path.suffix.lower() == ".png":
+    page_image = path.parts[0] in {"pages", "thumbs"}
+    if len(path.parts) == 2 and page_image and path.suffix.lower() == ".png":
         allowed = True
     if not allowed:
         raise ValueError("Artifact path is not downloadable")
@@ -142,6 +150,7 @@ def build_review(run: Run) -> dict[str, object]:
                 "anchor": render.get("anchor"),
                 "alt": accessibility.get("alt_text"),
                 "extended_description": accessibility.get("extended_description"),
+                "visible_pages": element.get("attrs", {}).get("visible_pages"),
                 "text": _text_excerpt(element.get("content", {})),
                 "source": _source_payload(element.get("source")),
                 "history": element.get("history", []),
@@ -194,6 +203,7 @@ def _page_payloads(run: Run, manifest: dict[str, Any]) -> list[dict[str, object]
             {
                 "number": page["number"],
                 "image_url": f"/api/runs/{run.id}/artifact/{page['image']}",
+                "thumb_url": f"/api/runs/{run.id}/artifact/{page.get('thumb') or page['image']}",
                 "width_points": page["width_points"],
                 "height_points": page["height_points"],
             }

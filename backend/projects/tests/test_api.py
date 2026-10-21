@@ -2,6 +2,7 @@ import io
 import json
 import zipfile
 from pathlib import Path
+from uuid import uuid4
 
 import boto3
 import pytest
@@ -244,6 +245,22 @@ def test_preflight_asks_for_a_main_file_when_several_exist(client: Client) -> No
 
 
 @pytest.mark.django_db
+def test_targets_list_only_beamer_files_without_downloading_other_files(client: Client) -> None:
+    # The file switcher needs the translatable decks, not every figure in the project
+    project = _create_project(client)
+    notes = b"\\documentclass{article}\n\\begin{document}x\\end{document}\n"
+    _upload(
+        client,
+        project["id"],
+        {"b.tex": BEAMER_SOURCE, "a.tex": BEAMER_SOURCE, "notes.tex": notes, "fig.png": b"png"},
+    )
+    result = client.get(f"/api/projects/{project['id']}/targets")
+    assert result.status_code == 200
+    assert result.json() == {"candidates": ["a.tex", "b.tex"]}
+    assert client.get(f"/api/projects/{uuid4()}/targets").status_code == 404
+
+
+@pytest.mark.django_db
 def test_remove_project_file(client: Client) -> None:
     # Remove one file from storage and the database
     project = _create_project(client)
@@ -312,6 +329,12 @@ def test_medium_run_review_and_artifact_downloads(client: Client) -> None:
     assert figure["source"]["file"] == "main.tex"
     assert figure["source"]["line_start"] <= figure["source"]["line_end"]
     assert figure["history"]
+    assert "visible_pages" in figure
+    first_page = review_data["pages"][0]
+    assert first_page["thumb_url"].endswith(".png")
+    assert "/artifact/thumbs/" in first_page["thumb_url"]
+    thumb = client.get(first_page["thumb_url"])
+    assert thumb.status_code == 200
     texts = [element["text"] for element in review_data["elements"] if element["text"]]
     assert "Course Logistics" in texts
 

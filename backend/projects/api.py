@@ -18,7 +18,7 @@ from projects.schemas import (
     RunCreateSchema,
     RunSchema,
 )
-from projects.services import artifact_key, build_review, project_preflight
+from projects.services import artifact_key, build_review, project_preflight, project_targets
 from projects.storage import (
     delete_prefix,
     delete_project_file,
@@ -198,6 +198,13 @@ def list_runs(request, project_id: UUID):
     # List one project's runs, newest first
     project = get_object_or_404(Project, id=project_id)
     return [_run_payload(run) for run in project.runs.all()]
+
+
+@router.get("/projects/{project_id}/targets", response={200: dict, 404: ErrorSchema})
+def list_targets(request, project_id: UUID):
+    # List the Beamer files in a project that can be translated
+    project = get_object_or_404(Project, id=project_id)
+    return {"candidates": project_targets(project)}
 
 
 @router.post(
