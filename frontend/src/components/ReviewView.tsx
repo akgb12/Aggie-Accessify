@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import type { ReactNode } from 'react'
 import { usePersistentFlag } from '../hooks'
 import { needsAttention, statusGroup } from '../status'
 import type { ElementStatus, Review, ReviewElement, ReviewIssue, Run } from '../types'
-import { useWorkspaceData } from '../workspace'
+import type { WorkspaceData } from '../workspace'
 import ElementList from './ElementList'
-import FileTree from './FileTree'
+import EditorFrame from './EditorFrame'
 import Inspector from './Inspector'
 import PageThumbnails from './PageThumbnails'
 import PageViewer from './PageViewer'
@@ -18,13 +18,18 @@ const DEFAULT_HIDDEN: ElementStatus = 'done'
 // Pages where an element can actually be seen, which for step-by-step slides is fewer than the pages it spans
 const shownPages = (element: ReviewElement): number[] => element.visible_pages ?? element.pages
 
-export default function ReviewView({ run, review }: { run: Run; review: Review }) {
-  const navigate = useNavigate()
-  const workspace = useWorkspaceData(run.project_id)
+interface Props {
+  run: Run
+  review: Review
+  projectName: string
+  workspace: WorkspaceData
+  files: ReactNode
+  onStarted: (run: Run) => void
+}
+
+export default function ReviewView({ run, review, projectName, workspace, files, onStarted }: Props) {
   const [pageNumber, setPageNumber] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [translateOpen, setTranslateOpen] = useState(false)
-  const [requestedFile, setRequestedFile] = useState<string | null>(null)
   const [leftOpen, setLeftOpen] = usePersistentFlag('review.left', true)
   const [rightOpen, setRightOpen] = usePersistentFlag('review.right', true)
   const [visible, setVisible] = useState<Set<ElementStatus>>(() => {
@@ -106,101 +111,75 @@ export default function ReviewView({ run, review }: { run: Run; review: Review }
     if (typeof page === 'number') setPageNumber(page)
   }
 
-  function openTarget(file: string) {
-    if (file === run.main_file) return
-    const latest = workspace.latestByFile.get(file)
-    if (latest) {
-      navigate(`/runs/${latest.id}`)
-      return
-    }
-    setRequestedFile(file)
-    setTranslateOpen(true)
-  }
-
   return (
-    <div className="flex h-full min-h-0 flex-col bg-white">
-      <ReviewToolbar
-        run={run}
-        renderEngine={review.render_engine}
-        attentionCount={attentionCount}
-        leftOpen={leftOpen}
-        rightOpen={rightOpen}
-        onToggleLeft={() => setLeftOpen(!leftOpen)}
-        onToggleRight={() => setRightOpen(!rightOpen)}
-        translateSlot={
-          <TranslateMenu
-            projectId={run.project_id}
-            targets={workspace.targets}
-            runs={workspace.runs}
-            latestByFile={workspace.latestByFile}
-            currentFile={run.main_file}
-            requestedFile={requestedFile}
-            open={translateOpen}
-            onOpenChange={setTranslateOpen}
-          />
-        }
-      />
-      <div className="flex min-h-0 flex-1">
-        {leftOpen && (
-          <aside aria-label="Slides, issues, pages and files" className="w-72 shrink-0 border-r border-slate-200">
-            <ReviewSidebar
-              review={review}
-              elementsById={elementsById}
-              slideTitles={slideTitles}
-              onOpenIssue={openIssue}
-              elements={
-                <ElementList
-                  review={review}
-                  elementsById={elementsById}
-                  counts={counts}
-                  visible={visible}
-                  pageNumber={pageNumber}
-                  selectedId={selectedId}
-                  onToggleStatus={toggle}
-                  onShowAll={() => setVisible(new Set(Object.keys(counts) as ElementStatus[]))}
-                  onSelect={select}
-                />
-              }
-              pages={
-                <PageThumbnails
-                  pages={review.pages}
-                  pageNumber={pageNumber}
-                  flaggedPages={flaggedPages}
-                  onPage={setPageNumber}
-                />
-              }
-              files={
-                workspace.project ? (
-                  <FileTree
-                    files={workspace.project.files}
-                    targets={workspace.targets}
-                    latestByFile={workspace.latestByFile}
-                    currentFile={run.main_file}
-                    onOpenTarget={openTarget}
-                  />
-                ) : (
-                  <p className="p-4 text-sm text-slate-500">{workspace.error ?? 'Loading files…'}</p>
-                )
-              }
+    <EditorFrame
+      toolbar={
+        <ReviewToolbar
+          run={run}
+          projectName={projectName}
+          renderEngine={review.render_engine}
+          attentionCount={attentionCount}
+          leftOpen={leftOpen}
+          rightOpen={rightOpen}
+          onToggleLeft={() => setLeftOpen(!leftOpen)}
+          onToggleRight={() => setRightOpen(!rightOpen)}
+          translateSlot={
+            <TranslateMenu
+              projectId={run.project_id}
+              file={run.main_file}
+              runs={workspace.runs}
+              onStarted={onStarted}
             />
-          </aside>
-        )}
-        <section aria-label="Slide preview" className="min-w-0 flex-1">
-          <PageViewer
-            pages={review.pages}
-            pageNumber={pageNumber}
-            elements={pageElements}
-            selectedId={selectedId}
-            onSelect={select}
-            onPage={setPageNumber}
+          }
+        />
+      }
+      left={
+        leftOpen ? (
+          <ReviewSidebar
+            review={review}
+            elementsById={elementsById}
+            slideTitles={slideTitles}
+            onOpenIssue={openIssue}
+            files={files}
+            elements={
+              <ElementList
+                review={review}
+                elementsById={elementsById}
+                counts={counts}
+                visible={visible}
+                pageNumber={pageNumber}
+                selectedId={selectedId}
+                onToggleStatus={toggle}
+                onShowAll={() => setVisible(new Set(Object.keys(counts) as ElementStatus[]))}
+                onSelect={select}
+              />
+            }
+            pages={
+              <PageThumbnails
+                pages={review.pages}
+                pageNumber={pageNumber}
+                flaggedPages={flaggedPages}
+                onPage={setPageNumber}
+              />
+            }
           />
-        </section>
-        {rightOpen && (
-          <aside aria-label="Inspector" className="w-80 shrink-0 overflow-auto border-l border-slate-200">
-            <Inspector element={selected} pageNumber={pageNumber} flagged={flaggedOnPage} onSelect={select} />
-          </aside>
-        )}
-      </div>
-    </div>
+        ) : null
+      }
+      center={
+        <PageViewer
+          pages={review.pages}
+          pageNumber={pageNumber}
+          elements={pageElements}
+          selectedId={selectedId}
+          onSelect={select}
+          onPage={setPageNumber}
+        />
+      }
+      right={
+        rightOpen ? (
+          <Inspector element={selected} pageNumber={pageNumber} flagged={flaggedOnPage} onSelect={select} />
+        ) : null
+      }
+    />
   )
 }

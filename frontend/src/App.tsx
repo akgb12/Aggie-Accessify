@@ -1,9 +1,10 @@
 import { Accessibility } from 'lucide-react'
 import { Link, Route, Routes } from 'react-router-dom'
 import { PageContainer } from './components/ui'
+import EditorPage from './pages/EditorPage'
 import ProjectPage from './pages/ProjectPage'
 import ProjectsPage from './pages/ProjectsPage'
-import RunPage from './pages/RunPage'
+import RunRedirect from './pages/RunRedirect'
 
 export default function App() {
   return (
@@ -52,7 +53,8 @@ export default function App() {
               </PageContainer>
             }
           />
-          <Route path="/runs/:id" element={<RunPage />} />
+          <Route path="/projects/:id/editor" element={<EditorPage />} />
+          <Route path="/runs/:id" element={<RunRedirect />} />
           <Route
             path="*"
             element={

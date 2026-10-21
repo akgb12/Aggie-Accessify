@@ -1,8 +1,8 @@
-import { ChevronDown, ChevronRight, File as FileIcon, FileCode, FileText, Folder, Image, Palette } from 'lucide-react'
+import { ChevronDown, ChevronRight, File as FileIcon, FileCode, FileText, Folder, Image, Palette, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { buildTree, foldersAbove } from '../fileTree'
 import type { TreeNode } from '../fileTree'
-import { fileKind } from '../format'
+import { fileKind, relativeTime } from '../format'
 import type { ProjectFile, Run } from '../types'
 import { cx } from './classes'
 
@@ -12,13 +12,24 @@ interface Props {
   files: ProjectFile[]
   targets: string[]
   latestByFile: Map<string, Run>
-  currentFile: string
-  onOpenTarget: (path: string) => void
+  selectedFile: string | null
+  onSelect: (path: string) => void
+  onRemove: (path: string) => void
 }
 
-export default function FileTree({ files, targets, latestByFile, currentFile, onOpenTarget }: Props) {
+function statusText(run: Run | undefined): string {
+  if (!run) return 'Not translated yet'
+  if (run.status === 'succeeded') {
+    const score = run.a_score !== null ? ` · A ${run.a_score.toFixed(0)}` : ''
+    return `Translated${score} · ${relativeTime(run.created_at)}`
+  }
+  if (run.status === 'queued' || run.status === 'running') return 'Translating…'
+  return run.status === 'failed' ? 'Last attempt failed' : 'Last attempt blocked'
+}
+
+export default function FileTree({ files, targets, latestByFile, selectedFile, onSelect, onRemove }: Props) {
   const tree = useMemo(() => buildTree(files), [files])
-  const [open, setOpen] = useState<Set<string>>(() => new Set(foldersAbove(currentFile)))
+  const [open, setOpen] = useState<Set<string>>(() => new Set(selectedFile ? foldersAbove(selectedFile) : []))
 
   function toggle(path: string) {
     setOpen((current) => {
@@ -51,63 +62,56 @@ export default function FileTree({ files, targets, latestByFile, currentFile, on
       )
     }
     const isTarget = targets.includes(node.path)
-    const isCurrent = node.path === currentFile
-    const latest = latestByFile.get(node.path)
+    const isSelected = node.path === selectedFile
     const Icon = ICONS[fileKind(node.path)]
-    const content = (
+    const body = (
       <>
         <Icon aria-hidden className={cx('h-4 w-4 shrink-0', isTarget ? 'text-brand-700' : 'text-slate-300')} />
         <span className="min-w-0 flex-1">
           <span className={cx('block truncate', !isTarget && 'text-slate-400')}>{node.name}</span>
           {isTarget && (
-            <span className="block truncate text-[11px] text-slate-400">
-              {isCurrent
-                ? 'Showing now'
-                : latest
-                  ? latest.a_score !== null
-                    ? `Translated · A ${latest.a_score.toFixed(0)}`
-                    : latest.status
-                  : 'Not translated yet'}
-            </span>
+            <span className="block truncate text-[11px] text-slate-400">{statusText(latestByFile.get(node.path))}</span>
           )}
         </span>
       </>
     )
     return (
-      <li key={node.path}>
+      <li key={node.path} className="group relative">
         {isTarget ? (
           <button
             type="button"
-            onClick={() => onOpenTarget(node.path)}
-            aria-current={isCurrent}
-            title={isCurrent ? 'The file shown now' : latest ? 'Open its latest translation' : 'Translate this file'}
+            onClick={() => onSelect(node.path)}
+            aria-current={isSelected}
             style={indent}
             className={cx(
-              'flex w-full items-center gap-1.5 rounded-md py-1 pr-2 text-left text-sm',
-              isCurrent ? 'bg-brand-50 ring-1 ring-brand-200' : 'text-slate-800 hover:bg-slate-50',
+              'flex w-full items-center gap-1.5 rounded-md py-1 pr-7 text-left text-sm',
+              isSelected ? 'bg-brand-50 ring-1 ring-brand-200' : 'text-slate-800 hover:bg-slate-50',
             )}
           >
-            {content}
+            {body}
           </button>
         ) : (
           <div
             style={indent}
             title={node.path.endsWith('.tex') ? 'Not a Beamer presentation' : undefined}
-            className="flex items-center gap-1.5 py-1 pr-2 text-sm"
+            className="flex items-center gap-1.5 py-1 pr-7 text-sm"
           >
-            {content}
+            {body}
           </div>
         )}
+        <button
+          type="button"
+          onClick={() => onRemove(node.path)}
+          aria-label={`Remove ${node.path}`}
+          className="absolute right-1 top-1.5 rounded p-0.5 text-slate-300 opacity-0 hover:bg-red-50 hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100"
+        >
+          <X aria-hidden className="h-3.5 w-3.5" />
+        </button>
       </li>
     )
   }
 
   return (
-    <div className="h-full overflow-auto p-2">
-      <p className="px-2 pb-2 text-xs text-slate-400">
-        Maroon files are Beamer presentations. Click one to open its translation or translate it.
-      </p>
-      <ul>{tree.map((node) => renderNode(node, 0))}</ul>
-    </div>
+    <ul className="px-2 pb-2">{tree.map((node) => renderNode(node, 0))}</ul>
   )
 }
