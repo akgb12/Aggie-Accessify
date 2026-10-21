@@ -1,4 +1,4 @@
-import { Accessibility } from 'lucide-react'
+import { Accessibility, House } from 'lucide-react'
 import { Link, Route, Routes } from 'react-router-dom'
 import { PageContainer } from './components/ui'
 import EditorPage from './pages/EditorPage'
@@ -16,7 +16,7 @@ export default function App() {
         Skip to content
       </a>
       <header className="z-30 shrink-0 border-b border-slate-200 bg-white">
-        <div className="flex h-12 items-center justify-between px-4">
+        <div className="flex h-12 items-center gap-1 px-4">
           <Link to="/" className="flex items-center gap-2.5 rounded-lg">
             <span className="flex h-7 w-7 items-center justify-center rounded-md bg-brand-800 text-white">
               <Accessibility aria-hidden className="h-4 w-4" />
@@ -25,14 +25,14 @@ export default function App() {
               Accessible Slides
             </span>
           </Link>
-          <nav aria-label="Main">
-            <Link
-              to="/"
-              className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100"
-            >
-              Projects
-            </Link>
-          </nav>
+          <Link
+            to="/"
+            aria-label="All projects"
+            title="All projects"
+            className="ml-2 rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          >
+            <House aria-hidden className="h-4 w-4" />
+          </Link>
         </div>
       </header>
       <main id="content" className="min-h-0 flex-1 overflow-auto">
