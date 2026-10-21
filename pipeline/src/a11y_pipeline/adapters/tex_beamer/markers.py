@@ -43,8 +43,8 @@ def inject_markers(
             if tag is None:
                 continue
             start, end = _content_bounds(element)
-            if _is_empty_body(element, start, end):
-                # Nothing to tag, and wrapping an empty \date{} would put the marker outside it
+            if _is_empty_body(element, start, end) or _wraps_an_image(element):
+                # Nothing to tag (an empty \date{}) or a picture that wrapping would nudge
                 continue
             element.mcid = mcid
             key = element.id.replace("/", "-")
@@ -160,6 +160,12 @@ def _marker_text(
     return rf"\aelspan{{{key}}}{{{mcid}}}{{{tag}}}{{", "}"
 
 
+def _wraps_an_image(element: Element) -> bool:
+    # Text that contains a picture (a logo inside an institute line) is left alone: wrapping it
+    # moves the picture by a fraction of a point and there is no text there to tag
+    return element.semantic_type != "figure" and "\\includegraphics" in (element.source.raw or "")
+
+
 def _is_empty_body(element: Element, start: int, end: int) -> bool:
     # Detect a span whose marked body has no content, such as an empty \date{}
     raw = element.source.raw or ""
@@ -201,6 +207,21 @@ def _metadata_short_form(
     return f"[{raw[1:-1]}]"
 
 
+# A display equation that ends a text element, optionally followed by overlay commands such as
+# \pause. A closing marker placed after it would sit in the resumed paragraph and create an empty
+# line, pushing everything below it down a couple of points.
+TRAILING_DISPLAY = re.compile(
+    r"(?P<close>\\\]|\$\$|\\end\{(?:equation\*?|align\*?|gather\*?|displaymath)\})"
+    r"(?:\s|\\pause(?:\s*<[^>]*>)?)*$"
+)
+
+
+def _before_trailing_display(raw: str, start: int, end: int) -> int:
+    # Move the closing marker inside a display equation that ends the text
+    match = TRAILING_DISPLAY.search(raw[start:end])
+    return start + match.start("close") if match else end
+
+
 def _content_bounds(element: Element) -> tuple[int, int]:
     # Locate the safe marker body inside the exact source span
     raw = element.source.raw or ""
@@ -211,9 +232,11 @@ def _content_bounds(element: Element) -> tuple[int, int]:
         return base + 1, base + len(raw) - 1
     if element.semantic_type == "list_item":
         relative_start, relative_end = _list_item_bounds(raw)
+        relative_end = _before_trailing_display(raw, relative_start, relative_end)
         return base + relative_start, base + relative_end
     if element.semantic_type == "paragraph":
         relative_start, relative_end = _paragraph_bounds(raw)
+        relative_end = _before_trailing_display(raw, relative_start, relative_end)
         return base + relative_start, base + relative_end
     if element.semantic_type == "formula":
         relative_start, relative_end = _display_math_bounds(raw)
