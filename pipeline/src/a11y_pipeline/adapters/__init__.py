@@ -178,10 +178,12 @@ def _figure_inputs(
         labels = _figure_labels(element)
         visible = list(labels)
         hidden: list[str] = []
+        rendered: list[str] = []
         if element.subtype == "diagram" and labels:
             detection = detect_figure_hidden_labels(pdf_path, element, labels)
             visible = detection.visible_labels
             hidden = detection.hidden_labels
+            rendered = [word.text for word in detection.words if not word.hidden]
         concepts = build_figure_concepts(element, nearby_text, visible, hidden)
         element.fidelity.required_concepts = list(concepts.required)
         element.fidelity.excluded_concepts = list(concepts.excluded)
@@ -204,6 +206,7 @@ def _figure_inputs(
             visible_labels=visible,
             slide_title=slide_title,
             nearby_text=nearby_text,
+            rendered_text=rendered,
         )
     return inputs
 

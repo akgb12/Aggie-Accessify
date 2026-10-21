@@ -4,7 +4,7 @@ from a11y_pipeline.evaluation.concepts import delivered_description, evaluate_co
 from a11y_pipeline.evaluation.scores import figure_accessibility_score
 from a11y_pipeline.evaluation.signals import evaluate_signals
 from a11y_pipeline.evaluation.vetoes import evaluate_vetoes
-from a11y_pipeline.ir.models import Candidate, DocumentIR, Issue
+from a11y_pipeline.ir.models import Candidate, DocumentIR, Element, Issue
 from a11y_pipeline.ir.patches import apply_patches
 
 
@@ -21,12 +21,32 @@ def evaluate_candidate(
     coverage_threshold: float,
     nearby_text_by_element: dict[str, list[str]] | None = None,
     visible_labels_by_element: dict[str, list[str]] | None = None,
+    rendered_text_by_element: dict[str, list[str]] | None = None,
 ) -> CandidateEvaluation:
     # Evaluate one cumulative candidate against the frozen base
     document = apply_patches(base_ir, candidate.patches)
     nearby = nearby_text_by_element or {}
     visible = visible_labels_by_element or {}
+    all_vetoes = evaluate_vetoes(base_ir, document, visible, rendered_text_by_element)
+    # A contradiction rejects that one figure's description; other vetoes disqualify the candidate
+    rejected = {
+        veto.element_id: veto
+        for veto in all_vetoes
+        if veto.code == "contradicts_source" and veto.element_id is not None
+    }
+    vetoes = [veto for veto in all_vetoes if veto.element_id not in rejected]
     issues: list[Issue] = []
+    for element_id, veto in rejected.items():
+        _reject_description(document.elements[element_id])
+        issues.append(
+            Issue(
+                element_id=element_id,
+                code="description_rejected",
+                severity="error",
+                message=veto.message,
+                details=veto.details,
+            )
+        )
     figure_scores: list[float] = []
     coverage_by_element: dict[str, float | None] = {}
     for element in document.elements.values():
@@ -49,6 +69,7 @@ def evaluate_candidate(
                 alt_present=bool((element.accessibility.alt_text or "").strip()),
                 coverage=coverage.coverage,
                 warning_count=signals.warning_count,
+                vetoed=element.id in rejected,
                 missing_asset=element.accessibility.status == "missing_asset",
             )
         )
@@ -67,8 +88,7 @@ def evaluate_candidate(
                         },
                     )
                 )
-    vetoes = evaluate_vetoes(base_ir, document, visible)
-    failing = _failing_elements(document, coverage_by_element, coverage_threshold, vetoes)
+    failing = _failing_elements(document, coverage_by_element, coverage_threshold, set(rejected))
     score_a = 100.0
     if figure_scores:
         score_a = sum(figure_scores) / len(figure_scores)
@@ -86,17 +106,20 @@ def evaluate_candidate(
     )
 
 
+def _reject_description(element: Element) -> None:
+    # Remove a description that contradicts the figure so it is never delivered
+    element.accessibility.alt_text = None
+    element.accessibility.extended_description = None
+    element.accessibility.status = "needs_review"
+
+
 def _failing_elements(
     document: DocumentIR,
     coverage_by_element: dict[str, float | None],
     threshold: float,
-    vetoes: list[Issue],
+    vetoed_ids: set[str],
 ) -> list[str]:
     # Find figures eligible for focused repair
-    vetoed_ids: set[str] = set()
-    for veto in vetoes:
-        if veto.element_id is not None:
-            vetoed_ids.add(veto.element_id)
     failing: list[str] = []
     for element in document.elements.values():
         if element.semantic_type != "figure":

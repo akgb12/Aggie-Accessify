@@ -13,6 +13,8 @@ class FigureDescriptionInput(BaseModel):
     visible_labels: list[str]
     slide_title: str | None
     nearby_text: list[str]
+    # Words drawn in the figure, used to check a description; never sent to the model
+    rendered_text: list[str] = []
 
 
 class FigureDescriptionOutput(BaseModel):

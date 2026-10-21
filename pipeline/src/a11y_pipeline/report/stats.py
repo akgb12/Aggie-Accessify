@@ -37,7 +37,7 @@ def build_report_stats(
         "T": _check_metric(pdf_checks, "structure_completeness"),
         "R": _check_metric(pdf_checks, "structure_completeness"),
         "H": _hierarchy_metric(ir),
-        "I": selected.scores.get("A"),
+        "I": selected.scores.get("A") if _has_figures(ir) else None,
         "B": None,
         "M": _formula_metric(ir),
         "D": _metadata_metric(pdf_checks),
@@ -68,6 +68,11 @@ def build_report_stats(
         model_calls=int(usage["calls"]),
         stop_reason=stop_reason,
     )
+
+
+def _has_figures(ir: DocumentIR) -> bool:
+    # Figure alt text is only a measurable part of A when the document has figures
+    return any(element.semantic_type == "figure" for element in ir.elements.values())
 
 
 def _check_metric(result: PdfCheckResult | None, name: str) -> float | None:

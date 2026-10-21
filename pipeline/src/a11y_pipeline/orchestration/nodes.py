@@ -87,6 +87,7 @@ def build_c0_node(state: RunState) -> dict[str, object]:
         state.config.concept_coverage_threshold,
         _nearby_text(state),
         _visible_labels(state),
+        _rendered_text(state),
     )
     return {
         "candidates": [evaluation.candidate],
@@ -195,6 +196,7 @@ def evaluate_node(state: RunState) -> dict[str, object]:
         state.config.concept_coverage_threshold,
         _nearby_text(state),
         _visible_labels(state),
+        _rendered_text(state),
     )
     candidates = list(state.candidates)
     previous = candidates[-1]
@@ -267,6 +269,7 @@ def finalize_node(state: RunState) -> dict[str, object]:
         state.config.concept_coverage_threshold,
         _nearby_text(state),
         _visible_labels(state),
+        _rendered_text(state),
     )
     final_ir = evaluation.document.model_copy(deep=True)
     for element_id in evaluation.failing_element_ids:
@@ -302,6 +305,14 @@ def _visible_labels(state: RunState) -> dict[str, list[str]]:
     values: dict[str, list[str]] = {}
     for element_id, capability_input in state.figure_inputs.items():
         values[element_id] = list(capability_input.visible_labels)
+    return values
+
+
+def _rendered_text(state: RunState) -> dict[str, list[str]]:
+    # Index the words drawn in each figure from capability inputs
+    values: dict[str, list[str]] = {}
+    for element_id, capability_input in state.figure_inputs.items():
+        values[element_id] = list(capability_input.rendered_text)
     return values
 
 

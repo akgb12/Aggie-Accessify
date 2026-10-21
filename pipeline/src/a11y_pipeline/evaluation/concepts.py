@@ -1,6 +1,7 @@
 import re
 from dataclasses import dataclass, field
 
+from a11y_pipeline.evaluation.mathtext import math_label_present
 from a11y_pipeline.ir.models import Element, Issue
 
 NUMBER_WORDS = {
@@ -258,7 +259,10 @@ def _concept_matches_normalized(normalized_text: str, concept: str) -> bool:
     # Apply the concept grammar to normalized text
     if concept.startswith("label:"):
         label = normalize_text(concept[6:])
-        return _contains_phrase(normalized_text, label)
+        # Math labels are said in many ways, so "$X_1$" is also met by "X1"
+        return _contains_phrase(normalized_text, label) or math_label_present(
+            normalized_text, concept[6:]
+        )
     parts = concept.split(":", 2)
     if len(parts) != 3 or parts[0] not in {"sequence", "count"}:
         return False

@@ -6,12 +6,14 @@ from a11y_pipeline.evaluation.concepts import (
     loosen_text,
     normalize_text,
 )
+from a11y_pipeline.evaluation.mathtext import fold_math
 from a11y_pipeline.ir.models import DocumentIR, Element, Issue
 
 
 def figure_contradiction_veto(
     element: Element,
     visible_labels: list[str],
+    rendered_text: list[str] | None = None,
 ) -> Issue | None:
     # Detect supported source contradictions in figure text
     # The count check is a coarse pattern match that mis-fires on partial counts such as
@@ -40,7 +42,12 @@ def figure_contradiction_veto(
                 )
     # Without any extracted labels there is nothing to compare quotes against
     can_compare = bool(visible_labels) or bool(element.fidelity.excluded_concepts)
-    unknown = _unknown_quoted_label(delivered_text, visible_labels) if can_compare else None
+    # Words drawn in the figure (axis names, edge labels) are as visible as extracted node labels
+    rendered = rendered_text or []
+    can_compare = can_compare or bool(rendered)
+    unknown = (
+        _unknown_quoted_label(delivered_text, visible_labels, rendered) if can_compare else None
+    )
     if unknown is not None:
         return Issue(
             element_id=element.id,
@@ -86,18 +93,21 @@ def evaluate_vetoes(
     source_ir: DocumentIR,
     candidate_ir: DocumentIR,
     visible_labels_by_element: dict[str, list[str]] | None = None,
+    rendered_text_by_element: dict[str, list[str]] | None = None,
     pdf_issues: list[Issue] | None = None,
     visual_issues: list[Issue] | None = None,
 ) -> list[Issue]:
     # Collect the four Mark 1 veto classes
     vetoes = formula_fidelity_vetoes(source_ir, candidate_ir)
     labels_by_element = visible_labels_by_element or {}
+    rendered_by_element = rendered_text_by_element or {}
     for element in candidate_ir.elements.values():
         if element.semantic_type != "figure":
             continue
         issue = figure_contradiction_veto(
             element,
             labels_by_element.get(element.id, []),
+            rendered_by_element.get(element.id, []),
         )
         if issue is not None:
             vetoes.append(issue)
@@ -144,11 +154,17 @@ def _sequence_counts(text: str, stem: str) -> list[int]:
     return found
 
 
-def _unknown_quoted_label(text: str, visible_labels: list[str]) -> str | None:
-    # Find a quoted label absent from visible source labels
+def _unknown_quoted_label(
+    text: str,
+    visible_labels: list[str],
+    rendered_text: list[str] | None = None,
+) -> str | None:
+    # Find a quoted label absent from visible source labels and from the words drawn in the figure
     visible: set[str] = set()
     for label in visible_labels:
         visible.add(loosen_text(normalize_text(label)))
+    drawn = [_folded_words(" ".join(rendered_text or []))]
+    drawn.extend(_folded_words(label) for label in visible_labels)
     pattern = re.compile(r"""["“”']([^"“”']+)["“”']""")
     for match in pattern.finditer(text):
         quoted = re.sub(r"\s+", " ", match.group(1)).strip()
@@ -156,9 +172,24 @@ def _unknown_quoted_label(text: str, visible_labels: list[str]) -> str | None:
             continue
         if re.search(r"[A-Za-z0-9]", quoted) is None:
             continue
-        if not _is_known_label(loosen_text(normalize_text(quoted)), visible):
-            return quoted
+        if _is_known_label(loosen_text(normalize_text(quoted)), visible):
+            continue
+        quoted_words = _folded_words(quoted)
+        if quoted_words and any(_contains_words(words, quoted_words) for words in drawn):
+            continue
+        return quoted
     return None
+
+
+def _folded_words(text: str) -> list[str]:
+    # Split text into words, each reduced so "$\\lambda$" and "λ" are the same word
+    return [word for word in (fold_math(part) for part in text.split()) if word]
+
+
+def _contains_words(words: list[str], sequence: list[str]) -> bool:
+    # Check that the words appear next to each other, in order
+    size = len(sequence)
+    return any(words[start : start + size] == sequence for start in range(len(words) - size + 1))
 
 
 def _is_known_label(quoted: str, visible: set[str]) -> bool:
