@@ -197,7 +197,10 @@ def _figure_description(element: Element) -> str | None:
 
 
 def _escape_alt(value: str) -> str:
-    # Escape required TeX option characters
+    # Escape required TeX option characters and keep the value on one line, because a
+    # blank line inside a keyval option is a paragraph break. The graphicx alt key is
+    # stored unexpanded, so & _ ^ ~ $ and \\ are safe and are left as written
+    value = " ".join(value.split())
     escaped = ""
     replacements = {"{": r"\{", "}": r"\}", "%": r"\%", "#": r"\#"}
     for character in value:
