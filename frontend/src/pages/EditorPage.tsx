@@ -93,7 +93,6 @@ export default function EditorPage() {
           file={file}
           run={followed.run}
           loadError={followed.error}
-          onSelect={select}
           onStarted={started}
         />
       }
