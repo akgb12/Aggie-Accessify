@@ -1,17 +1,19 @@
 import { useMemo, useState } from 'react'
+import { usePersistentFlag } from '../hooks'
 import { needsAttention, statusGroup } from '../status'
 import type { ElementStatus, Review, ReviewElement, Run } from '../types'
 import ElementSidebar from './ElementSidebar'
 import Inspector from './Inspector'
 import PageViewer from './PageViewer'
-import ReviewSummary from './ReviewSummary'
-import StatusFilter from './StatusFilter'
+import ReviewToolbar from './ReviewToolbar'
 
 const DEFAULT_HIDDEN: ElementStatus = 'done'
 
 export default function ReviewView({ run, review }: { run: Run; review: Review }) {
   const [pageNumber, setPageNumber] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [leftOpen, setLeftOpen] = usePersistentFlag('review.left', true)
+  const [rightOpen, setRightOpen] = usePersistentFlag('review.right', true)
   const [visible, setVisible] = useState<Set<ElementStatus>>(() => {
     const all = new Set<ElementStatus>()
     for (const element of review.elements) all.add(statusGroup(element.status))
@@ -34,17 +36,12 @@ export default function ReviewView({ run, review }: { run: Run; review: Review }
     return result
   }, [review])
 
-  const flaggedPages = useMemo(() => {
-    const pages = new Set<number>()
-    for (const element of review.elements) {
-      if (needsAttention(element.status)) element.pages.forEach((page) => pages.add(page))
-    }
-    return pages
-  }, [review])
-
   const attentionCount = review.elements.filter((element) => needsAttention(element.status)).length
   const pageElements = review.elements.filter(
     (element) => element.pages.includes(pageNumber) && visible.has(statusGroup(element.status)),
+  )
+  const flaggedOnPage = review.elements.filter(
+    (element) => element.pages.includes(pageNumber) && needsAttention(element.status),
   )
   const selected = selectedId ? (elementsById.get(selectedId) ?? null) : null
 
@@ -60,67 +57,59 @@ export default function ReviewView({ run, review }: { run: Run; review: Review }
   function select(id: string) {
     setSelectedId(id)
     const element = elementsById.get(id)
-    if (element) {
-      // Unmapped elements fall back to the first page of their slide
-      const container = review.containers.find((item) => item.id === id.split('/')[0])
-      const pages = element.pages.length > 0 ? element.pages : (container?.rendered_pages ?? [])
-      if (pages.length > 0 && !pages.includes(pageNumber)) setPageNumber(pages[0])
-    }
+    if (!element) return
+    // Unmapped elements fall back to the first page of their slide
+    const container = review.containers.find((item) => item.id === id.split('/')[0])
+    const pages = element.pages.length > 0 ? element.pages : (container?.rendered_pages ?? [])
+    if (pages.length > 0 && !pages.includes(pageNumber)) setPageNumber(pages[0])
     // A selected element should always be visible on the slide
-    if (element) {
-      const group = statusGroup(element.status)
-      setVisible((current) => (current.has(group) ? current : new Set(current).add(group)))
-    }
+    const group = statusGroup(element.status)
+    setVisible((current) => (current.has(group) ? current : new Set(current).add(group)))
   }
 
   return (
-    <div className="space-y-5">
-      <ReviewSummary run={run} attentionCount={attentionCount} renderEngine={review.render_engine} />
-
-      <div>
-        <h2 className="mb-2 text-sm font-semibold text-slate-700">Show on slides</h2>
-        <StatusFilter counts={counts} visible={visible} onToggle={toggle} />
-      </div>
-
-      <div className="grid gap-4 lg:h-[calc(100vh-9rem)] lg:min-h-[34rem] lg:grid-cols-[19rem_minmax(0,1fr)_23rem]">
-        <aside
-          aria-label="Elements and issues"
-          className="h-96 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:h-auto"
-        >
-          <ElementSidebar
-            review={review}
-            elementsById={elementsById}
-            visible={visible}
-            pageNumber={pageNumber}
-            selectedId={selectedId}
-            onSelect={select}
-            onGoToPage={setPageNumber}
-            onShowAll={() => setVisible(new Set(Object.keys(counts) as ElementStatus[]))}
-          />
-        </aside>
-
-        <section
-          aria-label="Slide preview"
-          className="h-[36rem] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:h-auto"
-        >
+    <div className="flex h-full min-h-0 flex-col bg-white">
+      <ReviewToolbar
+        run={run}
+        renderEngine={review.render_engine}
+        attentionCount={attentionCount}
+        leftOpen={leftOpen}
+        rightOpen={rightOpen}
+        onToggleLeft={() => setLeftOpen(!leftOpen)}
+        onToggleRight={() => setRightOpen(!rightOpen)}
+      />
+      <div className="flex min-h-0 flex-1">
+        {leftOpen && (
+          <aside aria-label="Slides and issues" className="w-72 shrink-0 border-r border-slate-200">
+            <ElementSidebar
+              review={review}
+              elementsById={elementsById}
+              counts={counts}
+              visible={visible}
+              pageNumber={pageNumber}
+              selectedId={selectedId}
+              onToggleStatus={toggle}
+              onShowAll={() => setVisible(new Set(Object.keys(counts) as ElementStatus[]))}
+              onSelect={select}
+              onGoToPage={setPageNumber}
+            />
+          </aside>
+        )}
+        <section aria-label="Slide preview" className="min-w-0 flex-1">
           <PageViewer
             pages={review.pages}
             pageNumber={pageNumber}
             elements={pageElements}
-            flaggedPages={flaggedPages}
             selectedId={selectedId}
             onSelect={select}
             onPage={setPageNumber}
           />
         </section>
-
-        <aside
-          aria-label="Inspector"
-          className="overflow-auto rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-        >
-          <h2 className="mb-3 text-sm font-semibold text-slate-700">Inspector</h2>
-          <Inspector element={selected} />
-        </aside>
+        {rightOpen && (
+          <aside aria-label="Inspector" className="w-80 shrink-0 overflow-auto border-l border-slate-200">
+            <Inspector element={selected} pageNumber={pageNumber} flagged={flaggedOnPage} onSelect={select} />
+          </aside>
+        )}
       </div>
     </div>
   )

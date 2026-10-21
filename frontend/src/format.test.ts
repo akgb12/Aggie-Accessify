@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  containerLabel,
+  elementLabel,
   fileKind,
   formatBytes,
   formatCost,
@@ -76,5 +78,39 @@ describe('fileKind and shortElementId', () => {
   it('shortens element ids', () => {
     expect(shortElementId('slide_04/figure_01')).toBe('figure_01')
     expect(shortElementId('slide_01')).toBe('slide_01')
+  })
+})
+
+describe('element wording', () => {
+  it('turns container ids into readable names', () => {
+    expect(containerLabel('slide_04')).toBe('Slide 4')
+    expect(containerLabel('slide_12')).toBe('Slide 12')
+  })
+
+  it('uses the element text as the title and the place as the subtitle', () => {
+    const label = elementLabel({
+      id: 'slide_02/list_01/list_item_03',
+      type: 'list_item',
+      text: 'Grading: 40% exams',
+    })
+    expect(label.title).toBe('Grading: 40% exams')
+    expect(label.subtitle).toBe('Slide 2 · List · Bullet')
+  })
+
+  it('falls back to the kind when there is no text and never exposes raw ids', () => {
+    const label = elementLabel({
+      id: 'slide_01/title_page_01/paragraph_03',
+      type: 'paragraph',
+      text: null,
+    })
+    expect(label.title).toBe('Text')
+    expect(label.subtitle).toBe('Slide 1 · Title page')
+    expect(`${label.title} ${label.subtitle}`).not.toMatch(/_\d/)
+  })
+
+  it('shortens long text', () => {
+    const label = elementLabel({ id: 'slide_01/paragraph_01', type: 'paragraph', text: 'word '.repeat(40) })
+    expect(label.title.length).toBeLessThanOrEqual(70)
+    expect(label.title.endsWith('…')).toBe(true)
   })
 })

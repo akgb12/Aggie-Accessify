@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom'
 import { api } from '../api'
 import ReviewView from '../components/ReviewView'
 import { buttonClasses } from '../components/classes'
-import { Alert, Card, PageHeader, RunStatusBadge, Skeleton, Spinner } from '../components/ui'
+import { Alert, Card, PageContainer, PageHeader, RunStatusBadge, Skeleton, Spinner } from '../components/ui'
 import { errorMessage } from '../errors'
 import { formatDuration, relativeTime } from '../format'
 import { isFinished } from '../status'
@@ -54,17 +54,29 @@ export default function RunPage() {
 
   if (error && !run) {
     return (
-      <Alert tone="danger" title="Could not load this run">
-        {error}
-      </Alert>
+      <PageContainer>
+        <Alert tone="danger" title="Could not load this run">
+          {error}
+        </Alert>
+      </PageContainer>
     )
   }
 
   if (!run) {
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-10 w-72" />
-        <Skeleton className="h-40" />
+      <PageContainer>
+        <div className="space-y-4">
+          <Skeleton className="h-10 w-72" />
+          <Skeleton className="h-40" />
+        </div>
+      </PageContainer>
+    )
+  }
+
+  if (run.status === 'succeeded' && review) {
+    return (
+      <div className="h-full">
+        <ReviewView run={run} review={review} />
       </div>
     )
   }
@@ -76,7 +88,7 @@ export default function RunPage() {
   )
 
   return (
-    <div>
+    <PageContainer>
       <PageHeader
         breadcrumbs={[
           { label: 'Projects', to: '/' },
@@ -145,7 +157,6 @@ export default function RunPage() {
       )}
 
       {run.status === 'succeeded' && !review && !error && <Skeleton className="h-96" />}
-      {run.status === 'succeeded' && review && <ReviewView run={run} review={review} />}
-    </div>
+    </PageContainer>
   )
 }

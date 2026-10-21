@@ -1,103 +1,142 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { useEffect, useRef } from 'react'
-import { absoluteUrl } from '../api'
+import { ChevronLeft, ChevronRight, Maximize, ZoomIn, ZoomOut } from 'lucide-react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import type { ReviewElement, ReviewPage } from '../types'
 import { cx } from './classes'
 import PageOverlay from './PageOverlay'
-import { Button } from './ui'
+
+const PADDING = 24
+const ZOOM_STEP = 1.25
+const MIN_ZOOM = 0.5
+const MAX_ZOOM = 4
 
 interface Props {
   pages: ReviewPage[]
   pageNumber: number
   elements: ReviewElement[]
-  flaggedPages: Set<number>
   selectedId: string | null
   onSelect: (id: string) => void
   onPage: (page: number) => void
 }
 
-export default function PageViewer({
-  pages,
-  pageNumber,
-  elements,
-  flaggedPages,
-  selectedId,
-  onSelect,
-  onPage,
-}: Props) {
-  const page = pages.find((candidate) => candidate.number === pageNumber) ?? pages[0]
-  const strip = useRef<HTMLDivElement>(null)
+function IconButton({
+  label,
+  onClick,
+  disabled,
+  children,
+}: {
+  label: string
+  onClick: () => void
+  disabled?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className={cx(
+        'rounded-md p-1.5 text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40',
+      )}
+    >
+      {children}
+    </button>
+  )
+}
 
-  useEffect(() => {
-    strip.current
-      ?.querySelector<HTMLElement>('[aria-current="page"]')
-      ?.scrollIntoView({ block: 'nearest', inline: 'center' })
-  }, [pageNumber])
+export default function PageViewer({ pages, pageNumber, elements, selectedId, onSelect, onPage }: Props) {
+  const page = pages.find((candidate) => candidate.number === pageNumber) ?? pages[0]
+  const pane = useRef<HTMLDivElement>(null)
+  const [size, setSize] = useState({ width: 0, height: 0 })
+  const [zoom, setZoom] = useState(1)
+  const [draft, setDraft] = useState<string | null>(null)
+
+  useLayoutEffect(() => {
+    const element = pane.current
+    if (!element) return
+    const measure = () => setSize({ width: element.clientWidth, height: element.clientHeight })
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
 
   if (!page) return <p className="p-6 text-sm text-slate-500">No pages were rendered for this run.</p>
+
+  // Fit the whole slide inside the pane, then apply the zoom on top
+  const availableWidth = Math.max(0, size.width - PADDING * 2)
+  const availableHeight = Math.max(0, size.height - PADDING * 2)
+  const fit = Math.min(availableWidth / page.width_points, availableHeight / page.height_points)
+  const scale = fit * zoom
+
+  function commitPage() {
+    const parsed = Number.parseInt(draft ?? '', 10)
+    if (Number.isFinite(parsed)) onPage(Math.min(pages.length, Math.max(1, parsed)))
+    setDraft(null)
+  }
 
   return (
     <div
       className="flex h-full min-h-0 flex-col"
-      onKeyDown={(e) => {
-        if ((e.target as HTMLElement).tagName === 'INPUT') return
-        if (e.key === 'ArrowLeft' && pageNumber > 1) onPage(pageNumber - 1)
-        if (e.key === 'ArrowRight' && pageNumber < pages.length) onPage(pageNumber + 1)
+      onKeyDown={(event) => {
+        if ((event.target as HTMLElement).tagName === 'INPUT') return
+        if (event.key === 'ArrowLeft' && pageNumber > 1) onPage(pageNumber - 1)
+        if (event.key === 'ArrowRight' && pageNumber < pages.length) onPage(pageNumber + 1)
       }}
     >
-      <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={pageNumber <= 1}
-          onClick={() => onPage(pageNumber - 1)}
-          icon={<ChevronLeft aria-hidden className="h-4 w-4" />}
-        >
-          Previous
-        </Button>
-        <span aria-live="polite" className="text-sm font-medium text-slate-700">
-          Page {pageNumber} of {pages.length}
-        </span>
-        <Button size="sm" variant="secondary" disabled={pageNumber >= pages.length} onClick={() => onPage(pageNumber + 1)}>
-          Next <ChevronRight aria-hidden className="h-4 w-4" />
-        </Button>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-auto bg-slate-100 p-4">
-        <PageOverlay page={page} elements={elements} selectedId={selectedId} onSelect={onSelect} />
-      </div>
-
-      <div
-        ref={strip}
-        role="group"
-        aria-label="Page thumbnails"
-        className="flex gap-2 overflow-x-auto border-t border-slate-200 bg-white p-2"
-      >
-        {pages.map((item) => (
-          <button
-            key={item.number}
-            onClick={() => onPage(item.number)}
-            aria-label={`Go to page ${item.number}${flaggedPages.has(item.number) ? ' (has items to review)' : ''}`}
-            aria-current={item.number === pageNumber ? 'page' : undefined}
-            className={cx(
-              'relative shrink-0 overflow-hidden rounded-md border-2',
-              item.number === pageNumber ? 'border-brand-600' : 'border-transparent hover:border-slate-300',
-            )}
-          >
-            <img
-              src={absoluteUrl(item.image_url)}
-              alt=""
-              loading="lazy"
-              className="block h-16 w-auto bg-white"
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-2">
+        <div className="flex items-center gap-1">
+          <IconButton label="Previous page" disabled={pageNumber <= 1} onClick={() => onPage(pageNumber - 1)}>
+            <ChevronLeft aria-hidden className="h-4 w-4" />
+          </IconButton>
+          <label className="flex items-center gap-1.5 text-sm text-slate-600">
+            <span className="sr-only">Page number</span>
+            <input
+              type="number"
+              min={1}
+              max={pages.length}
+              value={draft ?? pageNumber}
+              onChange={(event) => setDraft(event.target.value)}
+              onBlur={commitPage}
+              onKeyDown={(event) => event.key === 'Enter' && commitPage()}
+              className="w-12 rounded-md border border-slate-300 px-1.5 py-0.5 text-center text-sm"
             />
-            <span className="absolute bottom-0 left-0 rounded-tr bg-slate-900/70 px-1 text-[10px] text-white">
-              {item.number}
-            </span>
-            {flaggedPages.has(item.number) && (
-              <span aria-hidden className="absolute right-0.5 top-0.5 h-2.5 w-2.5 rounded-full bg-amber-500 ring-2 ring-white" />
-            )}
-          </button>
-        ))}
+            <span aria-hidden>/ {pages.length}</span>
+          </label>
+          <IconButton label="Next page" disabled={pageNumber >= pages.length} onClick={() => onPage(pageNumber + 1)}>
+            <ChevronRight aria-hidden className="h-4 w-4" />
+          </IconButton>
+        </div>
+        <div className="flex items-center gap-1">
+          <IconButton label="Zoom out" disabled={zoom <= MIN_ZOOM} onClick={() => setZoom(Math.max(MIN_ZOOM, zoom / ZOOM_STEP))}>
+            <ZoomOut aria-hidden className="h-4 w-4" />
+          </IconButton>
+          <span className="w-12 text-center text-xs tabular-nums text-slate-500">
+            {zoom === 1 ? 'Fit' : `${Math.round(zoom * 100)}%`}
+          </span>
+          <IconButton label="Zoom in" disabled={zoom >= MAX_ZOOM} onClick={() => setZoom(Math.min(MAX_ZOOM, zoom * ZOOM_STEP))}>
+            <ZoomIn aria-hidden className="h-4 w-4" />
+          </IconButton>
+          <IconButton label="Fit slide to the window" disabled={zoom === 1} onClick={() => setZoom(1)}>
+            <Maximize aria-hidden className="h-4 w-4" />
+          </IconButton>
+        </div>
+      </div>
+
+      <div ref={pane} className="flex min-h-0 flex-1 overflow-auto bg-slate-100" style={{ padding: PADDING }}>
+        {scale > 0 && (
+          <div className="m-auto shrink-0">
+            <PageOverlay
+              page={page}
+              width={page.width_points * scale}
+              height={page.height_points * scale}
+              elements={elements}
+              selectedId={selectedId}
+              onSelect={onSelect}
+            />
+          </div>
+        )}
       </div>
     </div>
   )

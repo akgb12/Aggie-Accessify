@@ -22,6 +22,11 @@ const TONE_CLASSES: Record<Tone, string> = {
   danger: 'bg-red-50 text-red-800 ring-red-200',
 }
 
+export function PageContainer({ children }: { children: ReactNode }) {
+  // Standard centered page width for pages that scroll normally
+  return <div className="mx-auto w-full max-w-screen-2xl px-4 py-8 sm:px-6">{children}</div>
+}
+
 export function Badge({
   tone = 'neutral',
   children,
@@ -34,7 +39,7 @@ export function Badge({
   return (
     <span
       className={cx(
-        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset',
+        'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset',
         TONE_CLASSES[tone],
         className,
       )}

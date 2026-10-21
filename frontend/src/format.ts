@@ -66,3 +66,55 @@ export function shortElementId(id: string): string {
   const parts = id.split('/')
   return parts[parts.length - 1] || id
 }
+
+const TYPE_LABELS: Record<string, string> = {
+  title_page: 'Title page',
+  document_title: 'Title',
+  heading: 'Slide title',
+  paragraph: 'Text',
+  list: 'List',
+  list_item: 'Bullet',
+  figure: 'Figure',
+  formula: 'Formula',
+  table: 'Table',
+  block: 'Block',
+  unknown: 'Unsupported content',
+}
+
+export function typeLabel(type: string): string {
+  const known = TYPE_LABELS[type]
+  if (known) return known
+  const spaced = type.replace(/_/g, ' ').trim()
+  return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : 'Element'
+}
+
+function stripIndex(segment: string): string {
+  return segment.replace(/_\d+$/, '')
+}
+
+// "slide_04" becomes "Slide 4"
+export function containerLabel(id: string): string {
+  const match = /^(.*?)_0*(\d+)$/.exec(id)
+  if (!match) return typeLabel(id)
+  const name = typeLabel(match[1])
+  return `${name} ${match[2]}`
+}
+
+export interface ElementLabel {
+  title: string
+  subtitle: string
+}
+
+// Human wording for an element, so raw ids like slide_01/title_page_01/paragraph_03 stay hidden
+export function elementLabel(element: { id: string; type: string; text: string | null }): ElementLabel {
+  const segments = element.id.split('/')
+  const kind = typeLabel(element.type)
+  const where = [containerLabel(segments[0])]
+  for (const segment of segments.slice(1, -1)) where.push(typeLabel(stripIndex(segment)))
+  const excerpt = element.text?.replace(/\s+/g, ' ').trim()
+  if (excerpt) {
+    const short = excerpt.length > 70 ? `${excerpt.slice(0, 69)}…` : excerpt
+    return { title: short, subtitle: [...where, kind].join(' · ') }
+  }
+  return { title: kind, subtitle: where.join(' · ') }
+}

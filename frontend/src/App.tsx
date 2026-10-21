@@ -1,29 +1,28 @@
 import { Accessibility } from 'lucide-react'
 import { Link, Route, Routes } from 'react-router-dom'
-import { Badge } from './components/ui'
+import { PageContainer } from './components/ui'
 import ProjectPage from './pages/ProjectPage'
 import ProjectsPage from './pages/ProjectsPage'
 import RunPage from './pages/RunPage'
 
 export default function App() {
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex h-screen flex-col overflow-hidden">
       <a
         href="#content"
         className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded focus:bg-white focus:px-3 focus:py-2"
       >
         Skip to content
       </a>
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-screen-2xl items-center justify-between px-4 sm:px-6">
-          <Link to="/" className="flex items-center gap-3 rounded-lg">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-800 text-white shadow-sm">
-              <Accessibility aria-hidden className="h-5 w-5" />
+      <header className="z-30 shrink-0 border-b border-slate-200 bg-white">
+        <div className="flex h-12 items-center justify-between px-4">
+          <Link to="/" className="flex items-center gap-2.5 rounded-lg">
+            <span className="flex h-7 w-7 items-center justify-center rounded-md bg-brand-800 text-white">
+              <Accessibility aria-hidden className="h-4 w-4" />
             </span>
-            <span className="text-base font-semibold tracking-tight text-slate-900">
+            <span className="text-sm font-semibold tracking-tight text-slate-900">
               Accessible Slides
             </span>
-            <Badge tone="brand">Mark 1</Badge>
           </Link>
           <nav aria-label="Main">
             <Link
@@ -35,17 +34,35 @@ export default function App() {
           </nav>
         </div>
       </header>
-      <main id="content" className="mx-auto w-full max-w-screen-2xl flex-1 px-4 py-8 sm:px-6">
+      <main id="content" className="min-h-0 flex-1 overflow-auto">
         <Routes>
-          <Route path="/" element={<ProjectsPage />} />
-          <Route path="/projects/:id" element={<ProjectPage />} />
+          <Route
+            path="/"
+            element={
+              <PageContainer>
+                <ProjectsPage />
+              </PageContainer>
+            }
+          />
+          <Route
+            path="/projects/:id"
+            element={
+              <PageContainer>
+                <ProjectPage />
+              </PageContainer>
+            }
+          />
           <Route path="/runs/:id" element={<RunPage />} />
-          <Route path="*" element={<p>Page not found.</p>} />
+          <Route
+            path="*"
+            element={
+              <PageContainer>
+                <p>Page not found.</p>
+              </PageContainer>
+            }
+          />
         </Routes>
       </main>
-      <footer className="border-t border-slate-200 py-4 text-center text-xs text-slate-400">
-        Preliminary accessibility (A) and fidelity (F) scores. Mark 1 research prototype.
-      </footer>
     </div>
   )
 }
