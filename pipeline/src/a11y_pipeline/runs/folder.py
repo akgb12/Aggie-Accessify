@@ -66,6 +66,10 @@ class CompletedRun:
     stats: ReportStats
 
 
+# Sharp enough to fill a large preview pane without looking soft
+PAGE_IMAGE_DPI = 200
+
+
 class RunBlockedError(RuntimeError):
     def __init__(self, folder: RunFolder, state: RunState) -> None:
         # Preserve blocked run details for the command line
@@ -199,7 +203,7 @@ def _materialize_completed_run(
         written.project_root,
         folder.output_dir / "updated_project.zip",
     )
-    page_images = render_pages(tagged_path, folder.root / "pages", dpi=110)
+    page_images = render_pages(tagged_path, folder.root / "pages", dpi=PAGE_IMAGE_DPI)
     selected = _selected_candidate(state)
     combined_issues = _combined_issues(state, selected, output_issues)
     state.issues = combined_issues
