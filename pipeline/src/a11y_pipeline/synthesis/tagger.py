@@ -57,12 +57,16 @@ class _StructureBuilder:
             return
         if element.semantic_type == "list_item":
             item_node = self._make_structure("LI", parent)
+            body = None
             if element.mcid is not None:
-                self._add_marked_leaf(item_node, element, "LBody")
+                body = self._add_marked_leaf(item_node, element, "LBody")
             for child_id in element.child_ids:
                 child = self.ir.elements[child_id]
                 if child.semantic_type == "list":
                     self._add_element(item_node, child_id)
+                else:
+                    # Display equations and figures inside a bullet belong to its body
+                    self._add_element(body if body is not None else item_node, child_id)
             return
         if element.mcid is None:
             return
@@ -71,23 +75,23 @@ class _StructureBuilder:
             return
         self._add_marked_leaf(parent, element, role)
 
-    def _add_marked_leaf(self, parent: Any, element: Element, role: str) -> None:
+    def _add_marked_leaf(self, parent: Any, element: Element, role: str) -> Any | None:
         # Link one final page marker to its structure element
         if not element.render.pages:
             self._marker_issue(element, "Tagged element has no mapped page")
-            return
+            return None
         final_page = element.render.pages[-1]
         if final_page < 1 or final_page > len(self.pdf.pages):
             self._marker_issue(element, "Tagged element maps outside the PDF page range")
-            return
+            return None
         mcid = element.mcid
         if mcid is None or mcid not in self.available_mcids[final_page - 1]:
             self._marker_issue(element, "Tagged element marker is missing on its final page")
-            return
+            return None
         page_mapping = self.per_page.setdefault(final_page, {})
         if mcid in page_mapping:
             self._marker_issue(element, "Tagged element MCID collides on its final page")
-            return
+            return None
         leaf = self._make_structure(role, parent)
         leaf.Pg = self.pdf.pages[final_page - 1].obj
         leaf.K = mcid
@@ -104,9 +108,13 @@ class _StructureBuilder:
                 details={"mcid": mcid, "role": role},
             )
         )
+        return leaf
 
     def _make_structure(self, role: str, parent: Any) -> Any:
         # Create and append one indirect structure element
+        if not isinstance(parent.K, Array):
+            # A leaf pointing at its own content becomes a list of that content and its children
+            parent.K = Array([parent.K])
         element = self.pdf.make_indirect(
             Dictionary(
                 Type=Name.StructElem,

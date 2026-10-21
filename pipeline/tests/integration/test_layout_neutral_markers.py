@@ -80,3 +80,35 @@ def test_visual_check_tolerates_antialiasing_flicker_but_not_a_real_shift(tmp_pa
 
     assert _images_identical(paths["base"], paths["flicker"])
     assert not _images_identical(paths["base"], paths["shifted"])
+
+
+@pytest.mark.tex
+def test_equations_inside_bullets_are_part_of_the_tagged_structure(tmp_path: Path) -> None:
+    # A display equation inside a bullet must own a structure element, nested in the bullet body
+    import pikepdf
+
+    from a11y_pipeline.evaluation.pdf_checks import check_pdf
+    from a11y_pipeline.synthesis.tagger import tag_pdf
+
+    prepared = _prepare(tmp_path, DECK)
+    tagged = tmp_path / "tagged.pdf"
+
+    tag_pdf(prepared.marked_pdf, prepared.ir, tagged)
+    checks = check_pdf(tagged, prepared.ir)
+
+    codes = {issue.code for issue in checks.issues}
+    assert "structure_content_missing" not in codes
+    assert "broken_mcid_link" not in codes
+    with pikepdf.open(tagged) as pdf:
+        roles: list[str] = []
+
+        def walk(node) -> None:
+            roles.append(str(node.get("/S", "")))
+            children = node.get("/K")
+            if isinstance(children, pikepdf.Array):
+                for child in children:
+                    if isinstance(child, pikepdf.Dictionary) and "/S" in child:
+                        walk(child)
+
+        walk(pdf.Root.StructTreeRoot.K)
+    assert roles.count("/Formula") == 2
