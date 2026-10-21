@@ -1,5 +1,5 @@
 import { ChevronDown } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { cx } from './classes'
 
@@ -10,6 +10,8 @@ export default function Popover({
   align = 'right',
   buttonClassName,
   width = 'w-72',
+  open: controlledOpen,
+  onOpenChange,
 }: {
   label: ReactNode
   icon?: ReactNode
@@ -17,8 +19,18 @@ export default function Popover({
   align?: 'left' | 'right'
   buttonClassName?: string
   width?: string
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }) {
-  const [open, setOpen] = useState(false)
+  const [innerOpen, setInnerOpen] = useState(false)
+  const open = controlledOpen ?? innerOpen
+  const setOpen = useCallback(
+    (next: boolean) => {
+      setInnerOpen(next)
+      onOpenChange?.(next)
+    },
+    [onOpenChange],
+  )
   const root = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -35,7 +47,7 @@ export default function Popover({
       document.removeEventListener('mousedown', close)
       document.removeEventListener('keydown', escape)
     }
-  }, [open])
+  }, [open, setOpen])
 
   return (
     <div ref={root} className="relative">
@@ -43,7 +55,7 @@ export default function Popover({
         type="button"
         aria-expanded={open}
         aria-haspopup="true"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => setOpen(!open)}
         className={cx(
           'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium',
           buttonClassName ?? 'text-slate-700 hover:bg-slate-100',

@@ -59,6 +59,7 @@ interface Props {
   rightOpen: boolean
   onToggleLeft: () => void
   onToggleRight: () => void
+  translateSlot: React.ReactNode
 }
 
 export default function ReviewToolbar({
@@ -69,6 +70,7 @@ export default function ReviewToolbar({
   rightOpen,
   onToggleLeft,
   onToggleRight,
+  translateSlot,
 }: Props) {
   const links = [
     { href: artifactUrl(run.id, 'output/tagged.pdf'), icon: <Download aria-hidden className="h-4 w-4" />, text: 'Tagged PDF' },
@@ -101,6 +103,7 @@ export default function ReviewToolbar({
             {attentionCount} need attention
           </span>
         )}
+        {translateSlot}
         <Popover label="Run details" icon={<Info aria-hidden className="h-4 w-4" />} width="w-80">
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
             <dt className="text-slate-500">Effort</dt>

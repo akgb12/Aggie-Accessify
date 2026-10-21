@@ -113,6 +113,7 @@ export interface ReviewElement {
   anchor: Anchor | null
   alt: string | null
   extended_description: string | null
+  visible_pages: number[] | null
   source: { file: string | null; line_start: number | null; line_end: number | null } | null
   history: HistoryEntry[]
   issues: ReviewIssue[]
@@ -129,6 +130,7 @@ export interface ReviewContainer {
 export interface ReviewPage {
   number: number
   image_url: string
+  thumb_url: string
   width_points: number
   height_points: number
 }

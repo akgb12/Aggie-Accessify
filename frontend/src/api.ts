@@ -73,6 +73,7 @@ export const api = {
     const query = mainFile ? `?main_file=${encodeURIComponent(mainFile)}` : ''
     return request<Preflight>(`/projects/${id}/preflight${query}`)
   },
+  targets: (id: string) => request<{ candidates: string[] }>(`/projects/${id}/targets`),
   listRuns: (id: string) => request<Run[]>(`/projects/${id}/runs`),
   createRun: (id: string, payload: RunCreate) =>
     request<Run>(`/projects/${id}/runs`, json(payload)),

@@ -53,7 +53,7 @@ export function needsAttention(status: string): boolean {
   return !['done', 'deterministic', 'model_generated'].includes(status)
 }
 
-const SEVERITY_ORDER = ['error', 'warning', 'info']
+const SEVERITY_ORDER = ['veto', 'error', 'warning', 'info']
 
 export function severityRank(severity: string): number {
   const index = SEVERITY_ORDER.indexOf(severity)
