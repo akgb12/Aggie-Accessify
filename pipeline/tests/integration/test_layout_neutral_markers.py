@@ -112,3 +112,44 @@ def test_equations_inside_bullets_are_part_of_the_tagged_structure(tmp_path: Pat
 
         walk(pdf.Root.StructTreeRoot.K)
     assert roles.count("/Formula") == 2
+
+
+MIXED_DECK = (
+    "\\documentclass{beamer}\n"
+    "\\usepackage{amsmath}\n"
+    "\\begin{document}\n"
+    "\\begin{frame}{Overlays and blocks}\n"
+    "\\begin{columns}[T]\n"
+    "\\begin{column}{0.48\\textwidth}\n"
+    "\\begin{itemize}\n"
+    "  \\item The true distribution is unknown and this sentence is long enough to wrap onto a "
+    "second and third line of text.\n"
+    "\\pause\n"
+    "  \\item Did we solve it?\n"
+    "\\pause\n"
+    "  \\item Objective:\n"
+    "  \\begin{center}\n"
+    "  \\textbf{Generalize beyond the training examples.}\n"
+    "  \\end{center}\n"
+    "\\end{itemize}\n"
+    "\\vspace{0.3em}\n"
+    "\\small\n"
+    "Description: the caption below the list.\n"
+    "\\end{column}\n"
+    "\\end{columns}\n"
+    "\\end{frame}\n"
+    "\\end{document}\n"
+)
+
+
+@pytest.mark.tex
+def test_pauses_block_environments_and_leading_spacing_do_not_shift_the_page(
+    tmp_path: Path,
+) -> None:
+    # Overlay commands, a trailing centered block and a leading \\vspace used to move or rewrap text
+    prepared = _prepare(tmp_path, MIXED_DECK)
+
+    check = compare_pdf_pixels(prepared.original_pdf, prepared.marked_pdf)
+
+    assert check.different_pages == []
+    assert not [i for i in prepared.ir.issues if i.code == "visual_change"]

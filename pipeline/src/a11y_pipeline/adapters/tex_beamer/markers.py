@@ -207,19 +207,35 @@ def _metadata_short_form(
     return f"[{raw[1:-1]}]"
 
 
-# A display equation that ends a text element, optionally followed by overlay commands such as
-# \pause. A closing marker placed after it would sit in the resumed paragraph and create an empty
-# line, pushing everything below it down a couple of points.
+# A display equation or block environment (center, quote, ...) that ends a text element, optionally
+# followed by overlay commands such as \pause. A closing marker placed after it would sit in the
+# resumed paragraph and create an empty line, pushing everything below it down a couple of points.
 TRAILING_DISPLAY = re.compile(
-    r"(?P<close>\\\]|\$\$|\\end\{(?:equation\*?|align\*?|gather\*?|displaymath)\})"
+    r"(?P<close>\\\]|\$\$|\\end\{(?:equation\*?|align\*?|gather\*?|displaymath"
+    r"|center|flushleft|flushright|quote|quotation|verse)\})"
     r"(?:\s|\\pause(?:\s*<[^>]*>)?)*$"
 )
 
 
+# Overlay commands that end an element's source. They belong between elements, not inside a marker:
+# swallowing a \pause changes how the last line of the text is set.
+TRAILING_PAUSES = re.compile(r"(?:\s*\\pause(?:\s*<[^>]*>)?)+\s*$")
+
+
 def _before_trailing_display(raw: str, start: int, end: int) -> int:
-    # Move the closing marker inside a display equation that ends the text
+    # Close the marker before trailing overlay commands, and inside a display equation that ends
+    # the text, so the marker adds nothing to the page
+    pauses = TRAILING_PAUSES.search(raw[start:end])
+    if pauses is not None and not TRAILING_DISPLAY.search(raw[start:end]):
+        end = start + pauses.start()
     match = TRAILING_DISPLAY.search(raw[start:end])
-    return start + match.start("close") if match else end
+    if match is None:
+        return end
+    close = start + match.start("close")
+    # Hug the last character: a space left before the marker would stay in the line and nudge it
+    while close > start and raw[close - 1].isspace():
+        close -= 1
+    return close
 
 
 def _content_bounds(element: Element) -> tuple[int, int]:
@@ -272,7 +288,7 @@ def _paragraph_bounds(raw: str) -> tuple[int, int]:
     )
     if declaration is not None and raw.endswith("}"):
         return start + declaration.end(), len(raw) - 1
-    return 0, len(raw)
+    return start, len(raw)
 
 
 def _display_math_bounds(raw: str) -> tuple[int, int]:
