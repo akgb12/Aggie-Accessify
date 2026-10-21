@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     floor_f: float = 90
     concept_coverage_threshold: float = 0.75
     element_repair_limit: int = 2
+    judge_in_loop: bool = False
     runs_dir: Path = Path("runs")
     tex_engine: str = "pdflatex"
     compile_timeout_seconds: int = 180

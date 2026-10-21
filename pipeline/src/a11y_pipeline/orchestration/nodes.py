@@ -1,3 +1,5 @@
+import hashlib
+
 from a11y_pipeline.adapters import get_adapter
 from a11y_pipeline.analysis.needs import analyze_needs
 from a11y_pipeline.budget import BudgetExceeded
@@ -6,8 +8,11 @@ from a11y_pipeline.capabilities.base import (
     CapabilityResult,
     FigureDescriptionInput,
     FigureDescriptionOutput,
+    FigureJudgeInput,
+    FigureJudgeOutput,
 )
 from a11y_pipeline.capabilities.feedback import repair_problems
+from a11y_pipeline.capabilities.figure_judge import FigureJudgeCapability
 from a11y_pipeline.ir.models import Candidate, DocumentIR, HistoryEntry, Issue, Patch
 from a11y_pipeline.ir.patches import apply_patches
 from a11y_pipeline.orchestration.candidates import evaluate_candidate
@@ -197,14 +202,13 @@ def evaluate_node(state: RunState) -> dict[str, object]:
     # Evaluate the synthesized cumulative candidate
     base_ir = _require_base_ir(state)
     candidate = _pending_candidate(state)
-    evaluation = evaluate_candidate(
-        base_ir,
-        candidate,
-        state.config.concept_coverage_threshold,
-        _nearby_text(state),
-        _visible_labels(state),
-        _rendered_text(state),
-    )
+    evaluation = _evaluate(state, base_ir, candidate, {})
+    judgments = dict(state.judgments)
+    budget_exhausted = state.budget_exhausted
+    if state.config.judge_in_loop and state.model_client is not None:
+        judgments, exhausted = _judge_figures(state, evaluation.document)
+        budget_exhausted = budget_exhausted or exhausted
+        evaluation = _evaluate(state, base_ir, candidate, _verdicts(judgments, evaluation.document))
     candidates = list(state.candidates)
     previous = candidates[-1]
     accepted = accepts_candidate(previous, evaluation.candidate)
@@ -214,6 +218,9 @@ def evaluate_node(state: RunState) -> dict[str, object]:
         state.config.floor_a,
         state.config.floor_f,
     )
+    budget_spent = state.budget_spent
+    if state.budget_controller is not None:
+        budget_spent = state.budget_controller.spent_usd
     return {
         "candidates": candidates,
         "candidate_ir": evaluation.document,
@@ -222,7 +229,89 @@ def evaluate_node(state: RunState) -> dict[str, object]:
         "selected_candidate_id": selected.candidate_id,
         "pending_results": [],
         "pending_candidate": None,
+        "judgments": judgments,
+        "budget_exhausted": budget_exhausted,
+        "budget_spent": budget_spent,
     }
+
+
+def _evaluate(
+    state: RunState,
+    base_ir: DocumentIR,
+    candidate: Candidate,
+    verdicts: dict[str, FigureJudgeOutput],
+):
+    # Evaluate one candidate with everything the run knows about its figures
+    return evaluate_candidate(
+        base_ir,
+        candidate,
+        state.config.concept_coverage_threshold,
+        _nearby_text(state),
+        _visible_labels(state),
+        _rendered_text(state),
+        verdicts,
+    )
+
+
+def _judge_key(element_id: str, alt_text: str, extended: str | None) -> str:
+    # Identify one description so an unchanged text is never judged twice
+    digest = hashlib.sha256(f"{alt_text}\n{extended or ''}".encode()).hexdigest()[:16]
+    return f"{element_id}:{digest}"
+
+
+def _verdicts(
+    judgments: dict[str, dict[str, object]],
+    document: DocumentIR,
+) -> dict[str, FigureJudgeOutput]:
+    # Look up the stored verdict for each figure's current description
+    verdicts: dict[str, FigureJudgeOutput] = {}
+    for element in document.elements.values():
+        alt = element.accessibility.alt_text
+        if element.semantic_type != "figure" or not alt:
+            continue
+        stored = judgments.get(
+            _judge_key(element.id, alt, element.accessibility.extended_description)
+        )
+        if stored is not None:
+            verdicts[element.id] = FigureJudgeOutput.model_validate(stored)
+    return verdicts
+
+
+def _judge_figures(
+    state: RunState,
+    document: DocumentIR,
+) -> tuple[dict[str, dict[str, object]], bool]:
+    # Judge every described figure whose current text has no verdict yet
+    judgments = dict(state.judgments)
+    capability = FigureJudgeCapability(
+        state.model_client,
+        model=state.config.generator_model,
+        max_tokens=state.config.model_max_output_tokens,
+    )
+    for element in document.elements.values():
+        alt = element.accessibility.alt_text
+        capability_input = state.figure_inputs.get(element.id)
+        if element.semantic_type != "figure" or not alt or capability_input is None:
+            continue
+        extended = element.accessibility.extended_description
+        key = _judge_key(element.id, alt, extended)
+        if key in judgments:
+            continue
+        try:
+            verdict = capability.judge(
+                FigureJudgeInput(
+                    element_id=element.id,
+                    image_png=capability_input.image_png,
+                    alt_text=alt,
+                    extended_description=extended,
+                    slide_title=capability_input.slide_title,
+                )
+            )
+        except BudgetExceeded:
+            return judgments, True
+        if verdict is not None:
+            judgments[key] = verdict.model_dump(mode="json")
+    return judgments, False
 
 
 def decide_node(state: RunState) -> dict[str, object]:
@@ -270,14 +359,11 @@ def finalize_node(state: RunState) -> dict[str, object]:
     # Materialize the selected candidate and review statuses
     base_ir = _require_base_ir(state)
     selected = _selected_candidate(state)
-    evaluation = evaluate_candidate(
-        base_ir,
-        selected,
-        state.config.concept_coverage_threshold,
-        _nearby_text(state),
-        _visible_labels(state),
-        _rendered_text(state),
-    )
+    evaluation = _evaluate(state, base_ir, selected, {})
+    if state.judgments:
+        evaluation = _evaluate(
+            state, base_ir, selected, _verdicts(state.judgments, evaluation.document)
+        )
     final_ir = evaluation.document.model_copy(deep=True)
     for element_id in evaluation.failing_element_ids:
         final_ir.elements[element_id].accessibility.status = "needs_review"

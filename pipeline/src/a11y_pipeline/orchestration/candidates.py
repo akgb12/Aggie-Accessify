@@ -1,11 +1,15 @@
 from dataclasses import dataclass
 
+from a11y_pipeline.capabilities.base import FigureJudgeOutput
 from a11y_pipeline.evaluation.concepts import delivered_description, evaluate_coverage
 from a11y_pipeline.evaluation.scores import figure_accessibility_score
 from a11y_pipeline.evaluation.signals import evaluate_signals
 from a11y_pipeline.evaluation.vetoes import evaluate_vetoes
 from a11y_pipeline.ir.models import Candidate, DocumentIR, Element, Issue
 from a11y_pipeline.ir.patches import apply_patches
+
+# A judged figure never scores above its verdict; provisional like the other score weights
+JUDGE_SCORES = {"good": 100.0, "needs_work": 70.0, "bad": 30.0}
 
 
 @dataclass(frozen=True)
@@ -22,6 +26,7 @@ def evaluate_candidate(
     nearby_text_by_element: dict[str, list[str]] | None = None,
     visible_labels_by_element: dict[str, list[str]] | None = None,
     rendered_text_by_element: dict[str, list[str]] | None = None,
+    judged_by_element: dict[str, FigureJudgeOutput] | None = None,
 ) -> CandidateEvaluation:
     # Evaluate one cumulative candidate against the frozen base
     document = apply_patches(base_ir, candidate.patches)
@@ -49,6 +54,7 @@ def evaluate_candidate(
         )
     figure_scores: list[float] = []
     flagged: set[str] = set()
+    judged = judged_by_element or {}
     coverage_by_element: dict[str, float | None] = {}
     for element in document.elements.values():
         if element.semantic_type != "figure":
@@ -67,15 +73,20 @@ def evaluate_candidate(
         if signals.warning_count:
             flagged.add(element.id)
         coverage_by_element[element.id] = coverage.coverage
-        figure_scores.append(
-            figure_accessibility_score(
-                alt_present=bool((element.accessibility.alt_text or "").strip()),
-                coverage=coverage.coverage,
-                warning_count=signals.warning_count,
-                vetoed=element.id in rejected,
-                missing_asset=element.accessibility.status == "missing_asset",
-            )
+        score = figure_accessibility_score(
+            alt_present=bool((element.accessibility.alt_text or "").strip()),
+            coverage=coverage.coverage,
+            warning_count=signals.warning_count,
+            vetoed=element.id in rejected,
+            missing_asset=element.accessibility.status == "missing_asset",
         )
+        verdict = judged.get(element.id)
+        if verdict is not None and element.id not in rejected:
+            score = min(score, JUDGE_SCORES[verdict.verdict])
+            issues.extend(_judge_issues(element.id, verdict))
+            if verdict.verdict != "good":
+                flagged.add(element.id)
+        figure_scores.append(score)
         if coverage.applicable and coverage.coverage is not None:
             if coverage.coverage < coverage_threshold:
                 issues.append(
@@ -109,6 +120,26 @@ def evaluate_candidate(
         document=document,
         failing_element_ids=failing,
     )
+
+
+def _judge_issues(element_id: str, verdict: FigureJudgeOutput) -> list[Issue]:
+    # One finding per problem the judge listed, so each can be fed back to the next attempt
+    issues: list[Issue] = []
+    problems = [f"Remove or correct: {item}" for item in verdict.invented]
+    problems.extend(f"Add: {item}" for item in verdict.missing)
+    if verdict.verdict != "good" and not problems:
+        problems.append("A reviewer found this description unclear; make it more specific.")
+    for problem in problems:
+        issues.append(
+            Issue(
+                element_id=element_id,
+                code="judge_problem",
+                severity="warning",
+                message=f"Judge ({verdict.verdict}): {problem}",
+                details={"problem": problem, "verdict": verdict.verdict},
+            )
+        )
+    return issues
 
 
 def _reject_description(element: Element) -> None:

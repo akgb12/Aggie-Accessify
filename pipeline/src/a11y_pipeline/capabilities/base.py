@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -31,3 +32,19 @@ class FigureDescriptionOutput(BaseModel):
 class CapabilityResult:
     patches: list[Patch]
     history: HistoryEntry | None
+
+
+class FigureJudgeInput(BaseModel):
+    element_id: str
+    image_png: bytes
+    alt_text: str
+    extended_description: str | None = None
+    slide_title: str | None = None
+
+
+class FigureJudgeOutput(BaseModel):
+    verdict: Literal["good", "needs_work", "bad"]
+    # Details the description states that the image does not show
+    invented: list[str] = []
+    # Important things the image shows that the description leaves out
+    missing: list[str] = []

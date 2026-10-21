@@ -5,6 +5,7 @@ from pathlib import Path
 
 from a11y_pipeline.adapters import get_adapter
 from a11y_pipeline.bundle.bundle import Bundle
+from a11y_pipeline.capabilities.base import FigureJudgeOutput
 from a11y_pipeline.config import Settings
 from a11y_pipeline.ir.serialize import dumps_document
 from a11y_pipeline.models.anthropic_client import AnthropicModelClient
@@ -124,6 +125,8 @@ def _model_client(settings: Settings) -> ModelClient:
 
 def _good_fake_response(request: ModelRequest) -> ScriptValue:
     # Return deterministic useful descriptions for local runs
+    if request.output_schema is FigureJudgeOutput:
+        return {"verdict": "good", "invented": [], "missing": []}
     if request.element_id == "slide_04/figure_01":
         return {
             "alt_text": (

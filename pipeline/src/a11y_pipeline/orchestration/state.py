@@ -49,5 +49,7 @@ class RunState(BaseModel):
     last_candidate_accepted: bool = True
     budget_exhausted: bool = False
     seed_weak_element_id: str | None = None
+    # Judge verdicts by element and description, so a text is only judged once
+    judgments: dict[str, dict[str, Any]] = Field(default_factory=dict)
     final_ir: DocumentIR | None = None
     blocked: bool = False
