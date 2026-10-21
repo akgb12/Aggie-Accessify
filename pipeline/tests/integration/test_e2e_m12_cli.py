@@ -98,6 +98,7 @@ def test_a11y_run_materializes_every_m12_artifact(
     first_page = manifest["pages"][0]
     assert first_page["number"] == 1
     assert (run_root / first_page["image"]).is_file()
+    assert (run_root / first_page["thumb"]).is_file()
     assert first_page["width_points"] > 0
     assert first_page["height_points"] > 0
 

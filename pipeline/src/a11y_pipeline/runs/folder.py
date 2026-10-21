@@ -21,6 +21,7 @@ from a11y_pipeline.orchestration.graph import run_pipeline
 from a11y_pipeline.orchestration.state import RunState
 from a11y_pipeline.render.pages import page_size_points, render_pages
 from a11y_pipeline.render.pixeldiff import compare_pdf_pixels, visual_change_issues
+from a11y_pipeline.render.visibility import element_visible_pages
 from a11y_pipeline.report.html import write_html_report
 from a11y_pipeline.report.stats import ReportStats, build_report_stats
 from a11y_pipeline.runs.manifest import build_manifest, write_manifest
@@ -68,6 +69,7 @@ class CompletedRun:
 
 # Sharp enough to fill a large preview pane without looking soft
 PAGE_IMAGE_DPI = 200
+THUMBNAIL_DPI = 40
 
 
 class RunBlockedError(RuntimeError):
@@ -204,6 +206,12 @@ def _materialize_completed_run(
         folder.output_dir / "updated_project.zip",
     )
     page_images = render_pages(tagged_path, folder.root / "pages", dpi=PAGE_IMAGE_DPI)
+    thumbnails = render_pages(tagged_path, folder.root / "thumbs", dpi=THUMBNAIL_DPI)
+    page_sizes = page_size_points(tagged_path)
+    for element in state.final_ir.elements.values():
+        visible = element_visible_pages(element, page_images, page_sizes)
+        if visible is not None:
+            element.attrs["visible_pages"] = visible
     selected = _selected_candidate(state)
     combined_issues = _combined_issues(state, selected, output_issues)
     state.issues = combined_issues
@@ -236,20 +244,26 @@ def _materialize_completed_run(
         state.bundle,
         input_path,
         [PROMPT_VERSION],
-        _page_records(tagged_path, page_images, folder.root),
+        _page_records(tagged_path, page_images, thumbnails, folder.root),
     )
     write_manifest(folder.manifest_path, manifest)
     return CompletedRun(folder=folder, state=state, stats=stats)
 
 
-def _page_records(tagged_path: Path, images: list[Path], root: Path) -> list[dict[str, Any]]:
-    # Pair each rendered page image with its size in PDF points
+def _page_records(
+    tagged_path: Path,
+    images: list[Path],
+    thumbnails: list[Path],
+    root: Path,
+) -> list[dict[str, Any]]:
+    # Pair each rendered page image and thumbnail with its size in PDF points
     records: list[dict[str, Any]] = []
     for index, (width, height) in enumerate(page_size_points(tagged_path)):
         records.append(
             {
                 "number": index + 1,
                 "image": images[index].relative_to(root).as_posix(),
+                "thumb": thumbnails[index].relative_to(root).as_posix(),
                 "width_points": width,
                 "height_points": height,
             }
