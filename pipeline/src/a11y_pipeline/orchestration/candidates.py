@@ -48,6 +48,7 @@ def evaluate_candidate(
             )
         )
     figure_scores: list[float] = []
+    flagged: set[str] = set()
     coverage_by_element: dict[str, float | None] = {}
     for element in document.elements.values():
         if element.semantic_type != "figure":
@@ -63,6 +64,8 @@ def evaluate_candidate(
             nearby.get(element.id, []),
         )
         issues.extend(signals.issues)
+        if signals.warning_count:
+            flagged.add(element.id)
         coverage_by_element[element.id] = coverage.coverage
         figure_scores.append(
             figure_accessibility_score(
@@ -88,7 +91,9 @@ def evaluate_candidate(
                         },
                     )
                 )
-    failing = _failing_elements(document, coverage_by_element, coverage_threshold, set(rejected))
+    failing = _failing_elements(
+        document, coverage_by_element, coverage_threshold, set(rejected) | flagged
+    )
     score_a = 100.0
     if figure_scores:
         score_a = sum(figure_scores) / len(figure_scores)

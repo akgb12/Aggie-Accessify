@@ -2,7 +2,12 @@ from a11y_pipeline.adapters import get_adapter
 from a11y_pipeline.analysis.needs import analyze_needs
 from a11y_pipeline.budget import BudgetExceeded
 from a11y_pipeline.bundle.bundle import Bundle
-from a11y_pipeline.capabilities.base import CapabilityResult, FigureDescriptionOutput
+from a11y_pipeline.capabilities.base import (
+    CapabilityResult,
+    FigureDescriptionInput,
+    FigureDescriptionOutput,
+)
+from a11y_pipeline.capabilities.feedback import repair_problems
 from a11y_pipeline.ir.models import Candidate, DocumentIR, HistoryEntry, Issue, Patch
 from a11y_pipeline.ir.patches import apply_patches
 from a11y_pipeline.orchestration.candidates import evaluate_candidate
@@ -132,6 +137,8 @@ def run_capabilities_node(state: RunState) -> dict[str, object]:
             results.append(_seed_weak_result(state, element_id))
             continue
         capability_input = state.figure_inputs.get(element_id)
+        if capability_input is not None and state.current_round > 0:
+            capability_input = _with_repair_feedback(state, capability_input)
         if capability_input is None:
             results.append(_missing_input_result(state, element_id))
             issues.append(
@@ -306,6 +313,25 @@ def _visible_labels(state: RunState) -> dict[str, list[str]]:
     for element_id, capability_input in state.figure_inputs.items():
         values[element_id] = list(capability_input.visible_labels)
     return values
+
+
+def _with_repair_feedback(
+    state: RunState,
+    capability_input: FigureDescriptionInput,
+) -> FigureDescriptionInput:
+    # Show the model its earlier attempt and what the evaluator found wrong with it
+    element_id = capability_input.element_id
+    problems = repair_problems(state.candidates[-1].issues, element_id)
+    if not problems:
+        return capability_input
+    previous = apply_patches(_require_base_ir(state), state.active_patches).elements[element_id]
+    return capability_input.model_copy(
+        update={
+            "previous_alt": previous.accessibility.alt_text,
+            "previous_extended": previous.accessibility.extended_description,
+            "problems": problems,
+        }
+    )
 
 
 def _rendered_text(state: RunState) -> dict[str, list[str]]:

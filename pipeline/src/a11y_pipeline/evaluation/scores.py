@@ -80,9 +80,7 @@ def figure_accessibility_score(
     if warning_count < 0:
         raise ValueError("Warning count must not be negative")
     if coverage is None:
-        if warning_count == 0:
-            return 60.0
-        return 0.0
+        return max(0.0, 60.0 - warning_count * 20.0)
     if coverage < 0.0 or coverage > 1.0:
         raise ValueError("Coverage must be between zero and one")
     return max(0.0, coverage * 100.0 - warning_count * 20.0)

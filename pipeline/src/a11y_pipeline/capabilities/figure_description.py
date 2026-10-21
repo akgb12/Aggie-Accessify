@@ -9,7 +9,7 @@ from a11y_pipeline.capabilities.base import (
 from a11y_pipeline.ir.models import HistoryEntry, Patch
 from a11y_pipeline.models.client import ModelClient, ModelMessage, ModelRequest
 
-PROMPT_VERSION = "figure_description_v2"
+PROMPT_VERSION = "figure_description_v3"
 DEFAULT_MODEL = "claude-sonnet-5-5"
 DEFAULT_MAX_TOKENS = 1000
 
@@ -41,6 +41,12 @@ class FigureDescriptionCapability:
         }
         if capability_input.subtype == "diagram" and capability_input.source_code is not None:
             context["source_code"] = capability_input.source_code
+        if capability_input.problems:
+            context["previous_attempt"] = {
+                "alt_text": capability_input.previous_alt,
+                "extended_description": capability_input.previous_extended,
+            }
+            context["problems_to_fix"] = capability_input.problems
         text = "Describe this figure using the following context.\n"
         text += json.dumps(context, ensure_ascii=False, sort_keys=True)
         message = ModelMessage(

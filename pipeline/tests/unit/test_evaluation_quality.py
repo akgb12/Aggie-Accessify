@@ -276,6 +276,7 @@ def test_figure_score_handles_coverage_warnings_raster_and_vetoes() -> None:
     assert figure_accessibility_score(True, 1.0, 0) == 100.0
     assert figure_accessibility_score(True, 0.5, 1) == 30.0
     assert figure_accessibility_score(True, None, 0) == 60.0
-    assert figure_accessibility_score(True, None, 1) == 0.0
+    assert figure_accessibility_score(True, None, 1) == 40.0
+    assert figure_accessibility_score(True, None, 4) == 0.0
     assert figure_accessibility_score(True, 1.0, 0, vetoed=True) == 0.0
     assert figure_accessibility_score(True, 1.0, 0, missing_asset=True) == 0.0

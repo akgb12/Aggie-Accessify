@@ -15,6 +15,10 @@ class FigureDescriptionInput(BaseModel):
     nearby_text: list[str]
     # Words drawn in the figure, used to check a description; never sent to the model
     rendered_text: list[str] = []
+    # Set only when repairing: the earlier attempt and what was wrong with it
+    previous_alt: str | None = None
+    previous_extended: str | None = None
+    problems: list[str] = []
 
 
 class FigureDescriptionOutput(BaseModel):
