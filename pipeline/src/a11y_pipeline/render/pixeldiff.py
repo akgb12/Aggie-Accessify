@@ -2,10 +2,16 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from PIL import Image, ImageChops
+from PIL import Image, ImageChops, ImageFilter
 
 from a11y_pipeline.ir.models import DocumentIR, Issue
 from a11y_pipeline.render.pages import render_pages
+
+# Sub-pixel position jitter in the PDF writer changes anti-aliasing without moving anything.
+# After a light blur such flicker stays below this level, while a real shift of a point or two
+# does not.
+JITTER_BLUR_RADIUS = 1.2
+JITTER_MAX_DIFFERENCE = 24
 
 
 @dataclass(frozen=True)
@@ -63,11 +69,19 @@ def visual_change_issues(ir: DocumentIR, check: PixelCheck) -> list[Issue]:
 
 
 def _images_identical(first_path: Path, second_path: Path) -> bool:
-    # Compare one page pair with Pillow difference bounds
+    # Compare one page pair: identical, or different only by anti-aliasing flicker
     with Image.open(first_path) as first_image:
         with Image.open(second_path) as second_image:
             first = first_image.convert("RGB")
             second = second_image.convert("RGB")
             if first.size != second.size:
                 return False
-            return ImageChops.difference(first, second).getbbox() is None
+            if ImageChops.difference(first, second).getbbox() is None:
+                return True
+            blurred_first = first.convert("L").filter(ImageFilter.GaussianBlur(JITTER_BLUR_RADIUS))
+            blurred_second = second.convert("L").filter(
+                ImageFilter.GaussianBlur(JITTER_BLUR_RADIUS)
+            )
+            histogram = ImageChops.difference(blurred_first, blurred_second).histogram()
+            largest = max(level for level, count in enumerate(histogram) if count)
+            return largest <= JITTER_MAX_DIFFERENCE
