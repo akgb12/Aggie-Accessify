@@ -2,7 +2,7 @@ export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(' ')
 }
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'destructive'
 export type ButtonSize = 'sm' | 'md'
 
 export function buttonClasses(variant: ButtonVariant = 'secondary', size: ButtonSize = 'md') {
@@ -15,5 +15,6 @@ export function buttonClasses(variant: ButtonVariant = 'secondary', size: Button
       'border border-slate-300 bg-white text-slate-700 shadow-sm hover:bg-slate-50',
     variant === 'ghost' && 'text-slate-600 hover:bg-slate-100',
     variant === 'danger' && 'text-red-700 hover:bg-red-50',
+    variant === 'destructive' && 'bg-red-700 text-white shadow-sm hover:bg-red-800',
   )
 }

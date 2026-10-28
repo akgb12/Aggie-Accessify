@@ -1,12 +1,16 @@
 import { Accessibility, House } from 'lucide-react'
 import { Link, Route, Routes } from 'react-router-dom'
-import { PageContainer } from './components/ui'
+import { useAuth } from './authContext'
+import AccountMenu from './components/AccountMenu'
+import { PageContainer, Skeleton } from './components/ui'
 import EditorPage from './pages/EditorPage'
+import LoginPage from './pages/LoginPage'
 import ProjectPage from './pages/ProjectPage'
 import ProjectsPage from './pages/ProjectsPage'
 import RunRedirect from './pages/RunRedirect'
 
 export default function App() {
+  const { user, loading } = useAuth()
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       <a
@@ -25,17 +29,27 @@ export default function App() {
               Accessible Slides
             </span>
           </Link>
-          <Link
-            to="/"
-            aria-label="All projects"
-            title="All projects"
-            className="ml-2 rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-          >
-            <House aria-hidden className="h-4 w-4" />
-          </Link>
+          {user && (
+            <Link
+              to="/"
+              aria-label="All projects"
+              title="All projects"
+              className="ml-2 rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            >
+              <House aria-hidden className="h-4 w-4" />
+            </Link>
+          )}
+          {user && <AccountMenu />}
         </div>
       </header>
       <main id="content" className="min-h-0 flex-1 overflow-auto">
+        {loading && (
+          <PageContainer>
+            <Skeleton className="h-40" />
+          </PageContainer>
+        )}
+        {!loading && !user && <LoginPage />}
+        {!loading && user && (
         <Routes>
           <Route
             path="/"
@@ -64,6 +78,7 @@ export default function App() {
             }
           />
         </Routes>
+        )}
       </main>
     </div>
   )

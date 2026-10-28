@@ -3,6 +3,40 @@
 export type RunStatus = 'queued' | 'running' | 'blocked' | 'succeeded' | 'failed'
 export type Effort = 'baseline' | 'low' | 'medium' | 'high'
 
+export type DefaultEffort = Exclude<Effort, 'baseline'>
+
+export interface Preferences {
+  default_effort: DefaultEffort
+  show_demo_options: boolean
+}
+
+export interface User {
+  id: number
+  username: string
+  first_name: string
+  last_name: string
+  preferences: Preferences
+  created_at: string
+}
+
+export interface Registration {
+  username: string
+  first_name: string
+  last_name: string
+  password: string
+  confirm_password: string
+}
+
+export interface Usage {
+  projects: number
+  runs: number
+  succeeded_runs: number
+  input_tokens: number
+  output_tokens: number
+  cost_usd: number
+  cost_usd_this_month: number
+}
+
 export interface ProjectFile {
   id: number
   path: string

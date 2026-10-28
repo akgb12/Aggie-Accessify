@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { api } from '../api'
 import { errorMessage } from '../errors'
 import type { WorkspaceData } from '../workspace'
+import ConfirmDialog from './ConfirmDialog'
 import FileTree from './FileTree'
 import { Spinner } from './ui'
 
@@ -18,6 +19,7 @@ interface Props {
 export default function FilesPanel({ projectId, data, selectedFile, onSelect, onRemoved }: Props) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [removing, setRemoving] = useState<string | null>(null)
 
   async function upload(files: File[]) {
     if (files.length === 0) return
@@ -34,14 +36,9 @@ export default function FilesPanel({ projectId, data, selectedFile, onSelect, on
   }
 
   async function remove(path: string) {
-    if (!window.confirm(`Remove ${path} from this project?`)) return
-    try {
-      await api.removeFile(projectId, path)
-      data.reload()
-      onRemoved(path)
-    } catch (e) {
-      setError(errorMessage(e))
-    }
+    await api.removeFile(projectId, path)
+    data.reload()
+    onRemoved(path)
   }
 
   return (
@@ -75,12 +72,22 @@ export default function FilesPanel({ projectId, data, selectedFile, onSelect, on
             latestByFile={data.latestByFile}
             selectedFile={selectedFile}
             onSelect={onSelect}
-            onRemove={(path) => void remove(path)}
+            onRemove={setRemoving}
           />
         ) : (
           <p className="p-4 text-sm text-slate-500">{data.error ?? 'Loading files…'}</p>
         )}
       </div>
+      {removing && (
+        <ConfirmDialog
+          title="Remove file?"
+          confirmLabel="Remove file"
+          onClose={() => setRemoving(null)}
+          onConfirm={() => remove(removing)}
+        >
+          <span className="font-mono">{removing}</span> will be removed from this project.
+        </ConfirmDialog>
+      )}
     </div>
   )
 }

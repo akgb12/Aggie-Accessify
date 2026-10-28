@@ -1,6 +1,7 @@
 import { Languages } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '../api'
+import { useUser } from '../authContext'
 import { errorMessage } from '../errors'
 import type { Effort, Run } from '../types'
 import { cx } from './classes'
@@ -19,7 +20,8 @@ interface Props {
 }
 
 export default function TranslateForm({ projectId, file, onStarted }: Props) {
-  const [effort, setEffort] = useState<Effort>('medium')
+  const { preferences } = useUser()
+  const [effort, setEffort] = useState<Effort>(preferences.default_effort)
   const [seedWeak, setSeedWeak] = useState('')
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -71,21 +73,23 @@ export default function TranslateForm({ projectId, file, onStarted }: Props) {
         </div>
       </fieldset>
 
-      <details className="text-sm">
-        <summary className="font-medium text-slate-500 hover:text-slate-800">Demo options</summary>
-        <label className="mt-2 block text-slate-700">
-          Seed a weak description for element
-          <input
-            value={seedWeak}
-            onChange={(event) => setSeedWeak(event.target.value)}
-            placeholder="slide_04/figure_01"
-            className="mt-1 block w-full rounded-lg border border-slate-300 px-2.5 py-1.5 font-mono text-sm placeholder:text-slate-400"
-          />
-          <span className="mt-1 block text-xs text-slate-500">
-            Forces a poor first description so you can watch the repair loop fix it.
-          </span>
-        </label>
-      </details>
+      {preferences.show_demo_options && (
+        <details className="text-sm">
+          <summary className="font-medium text-slate-500 hover:text-slate-800">Demo options</summary>
+          <label className="mt-2 block text-slate-700">
+            Seed a weak description for element
+            <input
+              value={seedWeak}
+              onChange={(event) => setSeedWeak(event.target.value)}
+              placeholder="slide_04/figure_01"
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-2.5 py-1.5 font-mono text-sm placeholder:text-slate-400"
+            />
+            <span className="mt-1 block text-xs text-slate-500">
+              Forces a poor first description so you can watch the repair loop fix it.
+            </span>
+          </label>
+        </details>
+      )}
 
       {error && <Alert tone="danger">{error}</Alert>}
       <Button

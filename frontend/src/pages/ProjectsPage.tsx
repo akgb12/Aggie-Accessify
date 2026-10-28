@@ -1,7 +1,10 @@
-import { ChevronRight, FolderOpen, Plus, Trash2 } from 'lucide-react'
+import { ChevronRight, FolderOpen, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api } from '../api'
+import { api, PROJECTS_CHANGED_EVENT } from '../api'
+import ConfirmDialog from '../components/ConfirmDialog'
+import Modal from '../components/Modal'
+import { TextField } from '../components/fields'
 import { Alert, Button, Card, EmptyState, PageHeader, Skeleton } from '../components/ui'
 import { errorMessage } from '../errors'
 import { relativeTime } from '../format'
@@ -12,12 +15,18 @@ export default function ProjectsPage() {
   const [name, setName] = useState('')
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<Project | null>(null)
+  const [renaming, setRenaming] = useState<Project | null>(null)
 
   useEffect(() => {
-    api
-      .listProjects()
-      .then(setProjects)
-      .catch((e) => setError(errorMessage(e)))
+    const load = () =>
+      api
+        .listProjects()
+        .then(setProjects)
+        .catch((e) => setError(errorMessage(e)))
+    void load()
+    window.addEventListener(PROJECTS_CHANGED_EVENT, load)
+    return () => window.removeEventListener(PROJECTS_CHANGED_EVENT, load)
   }, [])
 
   async function create(event: React.FormEvent) {
@@ -37,13 +46,13 @@ export default function ProjectsPage() {
   }
 
   async function remove(project: Project) {
-    if (!window.confirm(`Delete “${project.name}” and all of its files and runs?`)) return
-    try {
-      await api.deleteProject(project.id)
-      setProjects((current) => (current ?? []).filter((item) => item.id !== project.id))
-    } catch (e) {
-      setError(errorMessage(e))
-    }
+    await api.deleteProject(project.id)
+    setProjects((current) => (current ?? []).filter((item) => item.id !== project.id))
+  }
+
+  async function rename(project: Project, name: string) {
+    const updated = await api.renameProject(project.id, name)
+    setProjects((current) => (current ?? []).map((item) => (item.id === project.id ? updated : item)))
   }
 
   return (
@@ -118,18 +127,87 @@ export default function ProjectsPage() {
                 </span>
                 <ChevronRight aria-hidden className="h-5 w-5 text-slate-300 group-hover:text-brand-600" />
               </Link>
-              <button
-                type="button"
-                onClick={() => remove(project)}
-                aria-label={`Delete ${project.name}`}
-                className="absolute right-2 top-2 rounded-md p-1.5 text-slate-300 opacity-0 transition hover:bg-red-50 hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100"
-              >
-                <Trash2 aria-hidden className="h-4 w-4" />
-              </button>
+              <div className="absolute right-2 top-2 flex opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
+                <button
+                  type="button"
+                  onClick={() => setRenaming(project)}
+                  aria-label={`Rename ${project.name}`}
+                  className="rounded-md p-1.5 text-slate-300 hover:bg-slate-100 hover:text-slate-700"
+                >
+                  <Pencil aria-hidden className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeleting(project)}
+                  aria-label={`Delete ${project.name}`}
+                  className="rounded-md p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-600"
+                >
+                  <Trash2 aria-hidden className="h-4 w-4" />
+                </button>
+              </div>
             </li>
           ))}
         </ul>
       )}
+      {deleting && (
+        <ConfirmDialog
+          title="Delete project?"
+          confirmLabel="Delete project"
+          onClose={() => setDeleting(null)}
+          onConfirm={() => remove(deleting)}
+        >
+          “{deleting.name}” and all of its files and translations will be removed. This cannot be
+          undone.
+        </ConfirmDialog>
+      )}
+      {renaming && (
+        <RenameDialog
+          project={renaming}
+          onClose={() => setRenaming(null)}
+          onSave={(name) => rename(renaming, name)}
+        />
+      )}
     </div>
+  )
+}
+
+function RenameDialog({
+  project,
+  onClose,
+  onSave,
+}: {
+  project: Project
+  onClose: () => void
+  onSave: (name: string) => Promise<void>
+}) {
+  const [name, setName] = useState(project.name)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault()
+    setBusy(true)
+    try {
+      await onSave(name.trim())
+      onClose()
+    } catch (e) {
+      setError(errorMessage(e))
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal title="Rename project" onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4 px-5 pb-5 pt-3">
+        <TextField label="Project name" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        {error && <Alert tone="danger">{error}</Alert>}
+        <div className="flex justify-end gap-2">
+          <Button onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="primary" loading={busy} disabled={!name.trim() || name.trim() === project.name}>
+            Save
+          </Button>
+        </div>
+      </form>
+    </Modal>
   )
 }
