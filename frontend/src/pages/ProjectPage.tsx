@@ -56,7 +56,7 @@ export default function ProjectPage() {
         !error && <Skeleton className="h-48" />
       )}
       <p className="mt-3 text-sm text-slate-500">
-        A .zip of the whole LaTeX project works best: .tex files, figures and style files.
+        Upload a PowerPoint (.pptx) deck, or a .zip of the whole LaTeX project (.tex files, figures and style files).
       </p>
     </PageContainer>
   )

@@ -11,6 +11,9 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import Client
 from django.test.client import BOUNDARY, MULTIPART_CONTENT, encode_multipart
+from PIL import Image
+from pptx import Presentation
+from pptx.util import Inches
 
 from projects.models import Project, Run
 from projects.storage import UnsafePathError, validate_relative_path
@@ -424,3 +427,61 @@ def test_backend_code_follows_storage_rules() -> None:
         text = source.read_text(encoding="utf-8")
         for word in forbidden:
             assert word not in text, f"{word} found in {source.name}"
+
+
+def _deck_bytes() -> bytes:
+    # A two-slide deck with one undescribed picture
+    stream = io.BytesIO()
+    picture = io.BytesIO()
+    Image.new("RGB", (60, 40), "red").save(picture, format="PNG")
+    picture.seek(0)
+    presentation = Presentation()
+    slide = presentation.slides.add_slide(presentation.slide_layouts[5])
+    slide.shapes.title.text = "Gradient descent"
+    slide.shapes.add_picture(picture, Inches(1), Inches(2))
+    presentation.slides.add_slide(presentation.slide_layouts[5]).shapes.title.text = "Summary"
+    presentation.save(stream)
+    return stream.getvalue()
+
+
+@pytest.mark.django_db
+def test_targets_include_powerpoint_decks_but_not_office_lock_files(client: Client) -> None:
+    # A deck is translatable by name; Office's "~$" lock files are not decks
+    project = _create_project(client)
+    _upload(client, project["id"], {"talk.pptx": _deck_bytes(), "~$talk.pptx": b"lock"})
+    result = client.get(f"/api/projects/{project['id']}/targets")
+    assert result.json() == {"candidates": ["talk.pptx"]}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_powerpoint_run_returns_an_updated_deck(client: Client) -> None:
+    # Upload a deck, translate it with the fake model, then review and download the result
+    project = _create_project(client)
+    project_id = project["id"]
+    _upload(client, project_id, {"talk.pptx": _deck_bytes()})
+    preflight = client.get(f"/api/projects/{project_id}/preflight")
+    assert preflight.json()["ok"]
+    assert preflight.json()["main_file"] == "talk.pptx"
+    queued = client.post(
+        f"/api/projects/{project_id}/runs",
+        data=json.dumps({"effort": "low", "main_file": "talk.pptx"}),
+        content_type="application/json",
+    )
+    assert queued.status_code == 202
+    run = Run.objects.get(id=queued.json()["id"])
+    assert run.status == Run.Status.SUCCEEDED, run.error_message
+    assert run.main_file == "talk.pptx"
+    review = client.get(f"/api/runs/{run.id}/review").json()
+    assert review["source_format"] == "pptx"
+    assert {"label": "Accessible PowerPoint (.pptx)", "path": "output/updated.pptx"} in review[
+        "outputs"
+    ]
+    figure = next(e for e in review["elements"] if e["type"] == "figure")
+    assert figure["alt"]
+    assert figure["image_url"]
+    assert client.get(figure["image_url"]).status_code == 200
+    download = client.get(f"/api/runs/{run.id}/artifact/output/updated.pptx")
+    assert download.status_code == 200
+    updated = Presentation(io.BytesIO(b"".join(download.streaming_content)))
+    picture = next(shape for shape in updated.slides[0].shapes if shape.shape_type == 13)
+    assert picture._element.xpath("./p:nvPicPr/p:cNvPr")[0].get("descr")

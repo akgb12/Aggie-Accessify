@@ -41,9 +41,9 @@ export default function EditorMain({ project, targets, file, run, loadError, onS
   if (noTargets === 'no_tex') {
     return (
       <Centered>
-        <EmptyState icon={<FileText aria-hidden className="h-6 w-6" />} title="No LaTeX source in this project">
-          Only PDFs or other files were found. Use “Add files” on the left to add the Beamer source of your
-          slides; a PDF alone cannot be translated.
+        <EmptyState icon={<FileText aria-hidden className="h-6 w-6" />} title="No slides in this project">
+          Only PDFs or other files were found. Use “Add files” on the left to add a PowerPoint (.pptx)
+          deck or the Beamer source of your slides; a PDF alone cannot be translated.
         </EmptyState>
       </Centered>
     )

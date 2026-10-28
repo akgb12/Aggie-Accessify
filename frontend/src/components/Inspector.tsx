@@ -1,4 +1,5 @@
 import { MousePointerClick } from 'lucide-react'
+import { absoluteUrl } from '../api'
 import { elementLabel, formatCost } from '../format'
 import { statusColor, statusLabel } from '../status'
 import type { ReviewElement } from '../types'
@@ -60,6 +61,14 @@ function PageSummary({
   )
 }
 
+function sourceLabel(source: ReviewElement['source']): string {
+  if (!source?.file) return '–'
+  // PowerPoint shapes are located by slide part and shape id rather than by line
+  if (source.file.endsWith('.xml')) return `${source.file} · shape ${source.line_start}`
+  const end = source.line_end !== source.line_start ? `–${source.line_end}` : ''
+  return `${source.file}:${source.line_start}${end}`
+}
+
 export default function Inspector({
   element,
   pageNumber,
@@ -91,6 +100,14 @@ export default function Inspector({
         <blockquote className="rounded-md border-l-4 border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
           {element.text}
         </blockquote>
+      )}
+
+      {element.image_url && (
+        <img
+          src={absoluteUrl(element.image_url)}
+          alt=""
+          className="max-h-56 w-full rounded-md border border-slate-200 bg-white object-contain"
+        />
       )}
 
       {showAlt && (
@@ -172,7 +189,7 @@ export default function Inspector({
           <dd>{element.pages.length > 0 ? element.pages.join(', ') : '–'}</dd>
           <dt className="text-slate-400">Source</dt>
           <dd className="font-mono">
-            {source?.file ? `${source.file}:${source.line_start}${source.line_end !== source.line_start ? `–${source.line_end}` : ''}` : '–'}
+            {sourceLabel(source)}
           </dd>
         </dl>
       </details>

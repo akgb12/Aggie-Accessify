@@ -276,6 +276,7 @@ def _materialize_pptx_run(folder: RunFolder, state: RunState, input_path: Path) 
         page_images = render_pages(state.original_pdf, folder.root / "pages", dpi=PAGE_IMAGE_DPI)
         thumbnails = render_pages(state.original_pdf, folder.root / "thumbs", dpi=THUMBNAIL_DPI)
         pages = _page_records(state.original_pdf, page_images, thumbnails, folder.root)
+    _save_figure_images(folder, state)
     for element in state.final_ir.elements.values():
         element.attrs["visible_pages"] = list(element.render.pages)
     selected = _selected_candidate(state)
@@ -297,6 +298,21 @@ def _materialize_pptx_run(folder: RunFolder, state: RunState, input_path: Path) 
     manifest["outputs"] = _pptx_outputs()
     write_manifest(folder.manifest_path, manifest)
     return CompletedRun(folder=folder, state=state, stats=stats)
+
+
+def _save_figure_images(folder: RunFolder, state: RunState) -> None:
+    # Keep the picture each description was written for, so a reviewer can see both together
+    if state.final_ir is None:
+        return
+    figures = folder.root / "figures"
+    figures.mkdir(exist_ok=True)
+    for element_id, capability_input in state.figure_inputs.items():
+        element = state.final_ir.elements.get(element_id)
+        if element is None:
+            continue
+        name = f"{element_id.replace('/', '-')}.png"
+        (figures / name).write_bytes(capability_input.image_png)
+        element.attrs["image"] = f"figures/{name}"
 
 
 def _pptx_outputs() -> list[dict[str, str]]:

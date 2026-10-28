@@ -2,7 +2,7 @@ import { Download, FileArchive, FileText, Info, PanelRight } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { artifactUrl } from '../api'
 import { formatCost, scoreTone } from '../format'
-import type { Run } from '../types'
+import type { ReviewOutput, Run } from '../types'
 import { cx } from './classes'
 import EditorToolbar, { PanelToggle } from './EditorToolbar'
 import Popover from './Popover'
@@ -24,10 +24,18 @@ function Score({ label, title, value }: { label: string; title: string; value: n
   )
 }
 
+function outputIcon(path: string) {
+  const className = 'h-4 w-4'
+  if (path.endsWith('.zip')) return <FileArchive aria-hidden className={className} />
+  if (path.endsWith('.html') || path.endsWith('.diff')) return <FileText aria-hidden className={className} />
+  return <Download aria-hidden className={className} />
+}
+
 interface Props {
   run: Run
   projectName: string
   renderEngine: string | null
+  outputs: ReviewOutput[]
   attentionCount: number
   leftOpen: boolean
   rightOpen: boolean
@@ -40,6 +48,7 @@ export default function ReviewToolbar({
   run,
   projectName,
   renderEngine,
+  outputs,
   attentionCount,
   leftOpen,
   rightOpen,
@@ -47,11 +56,11 @@ export default function ReviewToolbar({
   onToggleRight,
   translateSlot,
 }: Props) {
-  const links = [
-    { href: artifactUrl(run.id, 'output/tagged.pdf'), icon: <Download aria-hidden className="h-4 w-4" />, text: 'Tagged PDF' },
-    { href: artifactUrl(run.id, 'output/updated_project.zip'), icon: <FileArchive aria-hidden className="h-4 w-4" />, text: 'Updated project (.zip)' },
-    { href: artifactUrl(run.id, 'report.html'), icon: <FileText aria-hidden className="h-4 w-4" />, text: 'Report' },
-  ]
+  const links = outputs.map((output) => ({
+    href: artifactUrl(run.id, output.path),
+    icon: outputIcon(output.path),
+    text: output.label,
+  }))
 
   return (
     <EditorToolbar projectName={projectName} file={run.main_file || null} leftOpen={leftOpen} onToggleLeft={onToggleLeft}>

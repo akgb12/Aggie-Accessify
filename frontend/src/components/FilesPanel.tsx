@@ -61,7 +61,7 @@ export default function FilesPanel({ projectId, data, selectedFile, onSelect, on
         </label>
         {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
         <p className="text-xs text-slate-400">
-          Maroon files are Beamer presentations. Click one to open it.
+          Maroon files are slide decks you can translate (Beamer or PowerPoint). Click one to open it.
         </p>
       </div>
       <div className="min-h-0 flex-1 overflow-auto pt-1">

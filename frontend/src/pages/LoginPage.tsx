@@ -70,7 +70,7 @@ export default function LoginPage() {
             {mode === 'signin' ? 'Welcome back' : 'Create your account'}
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Make your Beamer slides accessible. Sign in with your TAMU username.
+            Make your slides accessible. Sign in with your TAMU username.
           </p>
         </div>
 

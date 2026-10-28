@@ -118,6 +118,7 @@ export default function ReviewView({ run, review, projectName, workspace, files,
           run={run}
           projectName={projectName}
           renderEngine={review.render_engine}
+          outputs={review.outputs}
           attentionCount={attentionCount}
           leftOpen={leftOpen}
           rightOpen={rightOpen}

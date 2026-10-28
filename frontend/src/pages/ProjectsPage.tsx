@@ -59,7 +59,7 @@ export default function ProjectsPage() {
     <div>
       <PageHeader
         title="Projects"
-        subtitle="Upload Beamer slides and get back accessible LaTeX, a tagged PDF and a review report."
+        subtitle="Upload a PowerPoint deck or Beamer slides and get back accessible slides with described figures."
       />
 
       <Card className="mb-6">
@@ -103,7 +103,7 @@ export default function ProjectsPage() {
 
       {projects?.length === 0 && (
         <EmptyState icon={<FolderOpen aria-hidden className="h-6 w-6" />} title="No projects yet">
-          Create your first project above, then upload a .zip of your Beamer slides.
+          Create your first project above, then upload a .pptx deck, or a .zip of your Beamer slides.
         </EmptyState>
       )}
 

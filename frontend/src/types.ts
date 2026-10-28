@@ -148,6 +148,8 @@ export interface ReviewElement {
   alt: string | null
   extended_description: string | null
   visible_pages: number[] | null
+  // The picture a description was written for (PowerPoint runs)
+  image_url: string | null
   source: { file: string | null; line_start: number | null; line_end: number | null } | null
   history: HistoryEntry[]
   issues: ReviewIssue[]
@@ -169,9 +171,16 @@ export interface ReviewPage {
   height_points: number
 }
 
+export interface ReviewOutput {
+  label: string
+  path: string
+}
+
 export interface Review {
   run_id: string
   render_engine: string | null
+  source_format: 'tex-beamer' | 'pptx'
+  outputs: ReviewOutput[]
   containers: ReviewContainer[]
   elements: ReviewElement[]
   pages: ReviewPage[]

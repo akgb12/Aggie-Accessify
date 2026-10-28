@@ -3,9 +3,9 @@ from typing import Any
 
 from django.core.files.storage import default_storage
 
-from a11y_pipeline.adapters import get_adapter
+from a11y_pipeline.adapters import adapter_name_for, get_adapter
 from a11y_pipeline.bundle.bundle import Bundle
-from a11y_pipeline.bundle.mainfile import list_beamer_main_files
+from a11y_pipeline.bundle.mainfile import list_beamer_main_files, list_main_files
 from projects.models import Project, Run
 from projects.storage import (
     delete_prefix,
@@ -20,8 +20,16 @@ from projects.storage import (
 DOWNLOADABLE_ARTIFACTS = {
     "output/tagged.pdf",
     "output/updated_project.zip",
+    "output/updated.pptx",
+    "output/changes.diff",
     "report.html",
 }
+# What a finished Beamer run offers; PowerPoint runs list their own outputs in the manifest
+BEAMER_OUTPUTS = [
+    {"label": "Tagged PDF", "path": "output/tagged.pdf"},
+    {"label": "Updated project (.zip)", "path": "output/updated_project.zip"},
+    {"label": "Report", "path": "report.html"},
+]
 
 
 def project_preflight(project: Project, main_file: str | None = None) -> dict[str, object]:
@@ -29,13 +37,13 @@ def project_preflight(project: Project, main_file: str | None = None) -> dict[st
     with scratch_dir("preflight") as scratch:
         bundle_root = scratch / "bundle"
         materialize_project(project, bundle_root)
-        candidates = list_beamer_main_files(bundle_root)
+        candidates = list_main_files(bundle_root)
         if main_file is None:
             problem = _main_file_problem(bundle_root, candidates)
             if problem is not None:
                 return _blocked_preflight(problem, candidates)
         bundle = Bundle.from_path(bundle_root, main_file)
-        result = get_adapter("tex-beamer").preflight(bundle)
+        result = get_adapter(adapter_name_for(bundle.main_file)).preflight(bundle)
         issues: list[dict[str, object]] = []
         for issue in result.issues:
             issues.append(
@@ -60,13 +68,14 @@ def project_preflight(project: Project, main_file: str | None = None) -> dict[st
 
 
 def _main_file_problem(root: Path, candidates: list[str]) -> dict[str, str] | None:
-    # Explain why no single Beamer main file can be chosen yet
-    if not any(root.rglob("*.tex")):
+    # Explain why no single main file (Beamer source or PowerPoint deck) can be chosen yet
+    if not any(root.rglob("*.tex")) and not any(root.rglob("*.pptx")):
         return {
             "code": "no_tex_files",
             "message": (
-                "No LaTeX (.tex) files were found. Upload the Beamer source of your slides "
-                "(a .zip of the project works best); a PDF alone cannot be remediated."
+                "No slides were found. Upload a PowerPoint (.pptx) deck, or the Beamer (.tex) "
+                "source of your slides (a .zip of the project works best); a PDF alone "
+                "cannot be remediated."
             ),
         }
     if not candidates:
@@ -81,7 +90,7 @@ def _main_file_problem(root: Path, candidates: list[str]) -> dict[str, str] | No
         return {
             "code": "choose_main_file",
             "message": (
-                f"This project has {len(candidates)} Beamer files. Choose which one to process."
+                f"This project has {len(candidates)} slide files. Choose which one to process."
             ),
         }
     return None
@@ -101,10 +110,18 @@ def _blocked_preflight(problem: dict[str, str], candidates: list[str]) -> dict[s
 
 
 def project_targets(project: Project) -> list[str]:
-    # List the Beamer files that can be translated, reading only the .tex sources
+    # List what can be translated: Beamer sources (read to check) and PowerPoint decks (by name)
     with scratch_dir("targets") as scratch:
         materialize_project(project, scratch / "bundle", only_suffixes=(".tex",))
-        return list_beamer_main_files(scratch / "bundle")
+        beamer = list_beamer_main_files(scratch / "bundle")
+    decks = [
+        path
+        for path in project.files.values_list("path", flat=True)
+        if path.lower().endswith(".pptx")
+        and not PurePosixPath(path).name.startswith("~$")
+        and "__MACOSX" not in PurePosixPath(path).parts
+    ]
+    return sorted([*beamer, *decks])
 
 
 def artifact_key(run: Run, relative_path: str) -> str:
@@ -112,7 +129,7 @@ def artifact_key(run: Run, relative_path: str) -> str:
     relative = validate_relative_path(relative_path)
     allowed = relative in DOWNLOADABLE_ARTIFACTS
     path = PurePosixPath(relative)
-    page_image = path.parts[0] in {"pages", "thumbs"}
+    page_image = path.parts[0] in {"pages", "thumbs", "figures"}
     if len(path.parts) == 2 and page_image and path.suffix.lower() == ".png":
         allowed = True
     if not allowed:
@@ -153,6 +170,7 @@ def build_review(run: Run) -> dict[str, object]:
                 "alt": accessibility.get("alt_text"),
                 "extended_description": accessibility.get("extended_description"),
                 "visible_pages": element.get("attrs", {}).get("visible_pages"),
+                "image_url": _figure_image_url(run, element),
                 "text": _text_excerpt(element.get("content", {})),
                 "source": _source_payload(element.get("source")),
                 "history": element.get("history", []),
@@ -167,6 +185,8 @@ def build_review(run: Run) -> dict[str, object]:
     return {
         "run_id": str(run.id),
         "render_engine": manifest.get("versions", {}).get("render_engine"),
+        "source_format": ir.get("source_format", "tex-beamer"),
+        "outputs": manifest.get("outputs") or BEAMER_OUTPUTS,
         "containers": ir["containers"],
         "elements": elements,
         "pages": _page_payloads(run, manifest),
@@ -175,6 +195,12 @@ def build_review(run: Run) -> dict[str, object]:
         "round_history": history,
         "issues": document_issues,
     }
+
+
+def _figure_image_url(run: Run, element: dict[str, Any]) -> str | None:
+    # PowerPoint runs keep the picture each description was written for
+    image = element.get("attrs", {}).get("image")
+    return f"/api/runs/{run.id}/artifact/{image}" if isinstance(image, str) else None
 
 
 def _text_excerpt(content: dict[str, Any]) -> str | None:

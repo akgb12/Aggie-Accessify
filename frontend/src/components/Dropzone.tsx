@@ -41,7 +41,7 @@ export default function Dropzone({
         <UploadCloud aria-hidden className="mb-2 h-7 w-7 text-brand-700" />
       )}
       <span className="text-sm font-medium text-slate-800">
-        {busy ? 'Uploading…' : 'Drop your project .zip or files here'}
+        {busy ? 'Uploading…' : 'Drop a .pptx deck, a project .zip or files here'}
       </span>
       <span className="mt-0.5 text-sm text-slate-500">
         or <span className="font-medium text-brand-700 underline">browse your computer</span>
