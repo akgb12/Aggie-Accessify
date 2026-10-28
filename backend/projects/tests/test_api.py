@@ -7,40 +7,16 @@ from uuid import uuid4
 import boto3
 import pytest
 from django.conf import settings as django_settings
-from django.core.files.storage import default_storage, storages
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import Client
 from django.test.client import BOUNDARY, MULTIPART_CONTENT, encode_multipart
-from django.utils.functional import empty
-from moto import mock_aws
 
 from projects.models import Project, Run
 from projects.storage import UnsafePathError, validate_relative_path
 
 REPOSITORY_ROOT = Path(__file__).parents[3]
 LECTURE_SAMPLE = REPOSITORY_ROOT / "pipeline" / "tests" / "fixtures" / "lecture_sample"
-
-
-@pytest.fixture(autouse=True)
-def s3_storage(settings, tmp_path: Path):
-    # Back every backend test with a fresh moto S3 bucket and scratch folder
-    settings.SCRATCH_DIR = tmp_path / "scratch"
-    with mock_aws():
-        boto3.client("s3", region_name="us-east-1").create_bucket(
-            Bucket=django_settings.TEST_BUCKET_NAME
-        )
-        storages._storages = {}
-        default_storage._wrapped = empty
-        yield
-    storages._storages = {}
-    default_storage._wrapped = empty
-
-
-@pytest.fixture
-def client() -> Client:
-    # Create a Django API test client
-    return Client()
 
 
 def _create_project(client: Client, name: str = "Lecture") -> dict[str, object]:

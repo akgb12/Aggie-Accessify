@@ -60,16 +60,22 @@ ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver"]
 
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
+    "django.contrib.auth",
+    "django.contrib.sessions",
     "django.contrib.staticfiles",
     "corsheaders",
     "django_tasks_db",
+    "accounts",
     "projects",
 ]
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
     "ninja.compatibility.files.fix_request_files_middleware",
     "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -111,6 +117,24 @@ STORAGES = {
 SCRATCH_DIR = _repository_path("SCRATCH_DIR", ".cache/scratch")
 
 CORS_ALLOWED_ORIGINS = _env_list("CORS_ALLOWED_ORIGINS")
+# The browser app signs in with a session cookie, so cross-origin calls must carry credentials
+CORS_ALLOW_CREDENTIALS = True
+CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
+
+AUTH_USER_MODEL = "accounts.User"
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS": {"min_length": 10},
+    },
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+]
+SESSION_COOKIE_AGE = 14 * 24 * 60 * 60
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
 
 TASKS = {
     "default": {

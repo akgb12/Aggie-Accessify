@@ -8,6 +8,8 @@ from a11y_pipeline.bundle.bundle import Bundle
 from a11y_pipeline.bundle.mainfile import list_beamer_main_files
 from projects.models import Project, Run
 from projects.storage import (
+    delete_prefix,
+    delete_project_files,
     list_run_files,
     materialize_project,
     read_run_json,
@@ -209,3 +211,12 @@ def _page_payloads(run: Run, manifest: dict[str, Any]) -> list[dict[str, object]
             }
         )
     return pages
+
+
+def delete_project_completely(project: Project) -> None:
+    # Remove a project's source files, every run's stored output, then the rows
+    delete_project_files(project)
+    for run in project.runs.all():
+        if run.storage_prefix:
+            delete_prefix(run.storage_prefix)
+    project.delete()

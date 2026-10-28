@@ -65,3 +65,4 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 "backend/config/test_settings.py" = ["F403"]
+"backend/*/migrations/*.py" = ["E501"]

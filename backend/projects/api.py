@@ -4,11 +4,13 @@ from typing import Annotated
 from uuid import UUID
 
 from django.core.files.storage import default_storage
+from django.db.models import QuerySet
 from django.http import FileResponse, HttpResponse
 from django.shortcuts import get_object_or_404
 from ninja import File, Router, Status, UploadedFile
 from ninja.errors import HttpError
 
+from accounts.api import session_auth
 from projects.models import Project, Run
 from projects.schemas import (
     ErrorSchema,
@@ -18,18 +20,35 @@ from projects.schemas import (
     RunCreateSchema,
     RunSchema,
 )
-from projects.services import artifact_key, build_review, project_preflight, project_targets
+from projects.services import (
+    artifact_key,
+    build_review,
+    delete_project_completely,
+    project_preflight,
+    project_targets,
+)
 from projects.storage import (
-    delete_prefix,
     delete_project_file,
-    delete_project_files,
     save_missing_slot,
     upload_project_files,
     validate_relative_path,
 )
 from projects.tasks import run_pipeline_task
 
-router = Router()
+router = Router(auth=session_auth)
+
+
+def _owned_project(request, project_id: UUID, queryset: QuerySet[Project] | None = None) -> Project:
+    # Someone else's project is a 404, so ids never reveal what exists
+    return get_object_or_404(
+        Project.objects.all() if queryset is None else queryset,
+        id=project_id,
+        owner=request.user,
+    )
+
+
+def _owned_run(request, run_id: UUID) -> Run:
+    return get_object_or_404(Run, id=run_id, project__owner=request.user)
 
 
 def _project_payload(project: Project) -> dict[str, object]:
@@ -81,7 +100,7 @@ def _run_payload(run: Run) -> dict[str, object]:
 @router.post("/projects", response={201: ProjectSchema})
 def create_project(request, payload: ProjectCreateSchema):
     # Create a named source project
-    project = Project.objects.create(name=payload.name.strip())
+    project = Project.objects.create(owner=request.user, name=payload.name.strip())
     return Status(201, _project_payload(project))
 
 
@@ -89,7 +108,7 @@ def create_project(request, payload: ProjectCreateSchema):
 def list_projects(request):
     # List projects with their current files
     values: list[dict[str, object]] = []
-    for project in Project.objects.prefetch_related("files"):
+    for project in Project.objects.filter(owner=request.user).prefetch_related("files"):
         values.append(_project_payload(project))
     return values
 
@@ -97,14 +116,14 @@ def list_projects(request):
 @router.get("/projects/{project_id}", response={200: ProjectSchema, 404: ErrorSchema})
 def get_project(request, project_id: UUID):
     # Return one project and its uploaded files
-    project = get_object_or_404(Project.objects.prefetch_related("files"), id=project_id)
+    project = _owned_project(request, project_id, Project.objects.prefetch_related("files"))
     return _project_payload(project)
 
 
 @router.patch("/projects/{project_id}", response={200: ProjectSchema, 404: ErrorSchema})
 def update_project(request, project_id: UUID, payload: ProjectUpdateSchema):
     # Rename one existing project
-    project = get_object_or_404(Project, id=project_id)
+    project = _owned_project(request, project_id)
     project.name = payload.name.strip()
     project.save(update_fields=["name", "updated_at"])
     return _project_payload(project)
@@ -113,12 +132,8 @@ def update_project(request, project_id: UUID, payload: ProjectUpdateSchema):
 @router.delete("/projects/{project_id}", response={204: None, 404: ErrorSchema})
 def delete_project(request, project_id: UUID):
     # Delete one project and its stored files
-    project = get_object_or_404(Project.objects.prefetch_related("files", "runs"), id=project_id)
-    delete_project_files(project)
-    for run in project.runs.all():
-        if run.storage_prefix:
-            delete_prefix(run.storage_prefix)
-    project.delete()
+    project = _owned_project(request, project_id, Project.objects.prefetch_related("files", "runs"))
+    delete_project_completely(project)
     return HttpResponse(status=204)
 
 
@@ -132,7 +147,7 @@ def upload_project(
     files: Annotated[list[UploadedFile], File(...)],
 ):
     # Upload a safe zip or multiple individual files
-    project = get_object_or_404(Project, id=project_id)
+    project = _owned_project(request, project_id)
     try:
         upload_project_files(project, files)
     except (OSError, ValueError) as error:
@@ -151,7 +166,7 @@ def put_project_file(
     file: Annotated[UploadedFile, File(...)],
 ):
     # Fill one explicit missing file slot
-    project = get_object_or_404(Project, id=project_id)
+    project = _owned_project(request, project_id)
     try:
         save_missing_slot(project, path, file)
     except (OSError, ValueError) as error:
@@ -165,14 +180,14 @@ def put_project_file(
 )
 def remove_project_file(request, project_id: UUID, path: str):
     # Remove one uploaded file from a project
-    project = get_object_or_404(Project, id=project_id)
+    project = _owned_project(request, project_id)
     try:
         removed = delete_project_file(project, path)
     except ValueError as error:
         raise HttpError(400, str(error)) from error
     if not removed:
         raise HttpError(404, "File was not found in this project")
-    return _project_payload(Project.objects.prefetch_related("files").get(id=project_id))
+    return _project_payload(Project.objects.prefetch_related("files").get(id=project.id))
 
 
 @router.get(
@@ -181,7 +196,7 @@ def remove_project_file(request, project_id: UUID, path: str):
 )
 def preflight_project(request, project_id: UUID, main_file: str | None = None):
     # Return main file and dependency readiness
-    project = get_object_or_404(Project, id=project_id)
+    project = _owned_project(request, project_id)
     try:
         if main_file is not None:
             validate_relative_path(main_file)
@@ -196,14 +211,14 @@ def preflight_project(request, project_id: UUID, main_file: str | None = None):
 )
 def list_runs(request, project_id: UUID):
     # List one project's runs, newest first
-    project = get_object_or_404(Project, id=project_id)
+    project = _owned_project(request, project_id)
     return [_run_payload(run) for run in project.runs.all()]
 
 
 @router.get("/projects/{project_id}/targets", response={200: dict, 404: ErrorSchema})
 def list_targets(request, project_id: UUID):
     # List the Beamer files in a project that can be translated
-    project = get_object_or_404(Project, id=project_id)
+    project = _owned_project(request, project_id)
     return {"candidates": project_targets(project)}
 
 
@@ -213,7 +228,7 @@ def list_targets(request, project_id: UUID):
 )
 def create_run(request, project_id: UUID, payload: RunCreateSchema):
     # Queue one accessibility remediation run
-    project = get_object_or_404(Project, id=project_id)
+    project = _owned_project(request, project_id)
     if payload.main_file is not None:
         try:
             validate_relative_path(payload.main_file)
@@ -237,14 +252,14 @@ def create_run(request, project_id: UUID, payload: RunCreateSchema):
 @router.get("/runs/{run_id}", response={200: RunSchema, 404: ErrorSchema})
 def get_run(request, run_id: UUID):
     # Return run status and summary values
-    run = get_object_or_404(Run, id=run_id)
+    run = _owned_run(request, run_id)
     return _run_payload(run)
 
 
 @router.get("/runs/{run_id}/review", response={200: dict, 404: ErrorSchema, 409: ErrorSchema})
 def get_run_review(request, run_id: UUID):
     # Return review data for one successful run
-    run = get_object_or_404(Run, id=run_id)
+    run = _owned_run(request, run_id)
     if run.status != Run.Status.SUCCEEDED:
         raise HttpError(409, "Review is available after a run succeeds")
     try:
@@ -256,7 +271,7 @@ def get_run_review(request, run_id: UUID):
 @router.get("/runs/{run_id}/artifact/{path:relpath}")
 def download_artifact(request, run_id: UUID, relpath: str):
     # Download one approved artifact from a completed run
-    run = get_object_or_404(Run, id=run_id)
+    run = _owned_run(request, run_id)
     try:
         key = artifact_key(run, relpath)
     except ValueError as error:
