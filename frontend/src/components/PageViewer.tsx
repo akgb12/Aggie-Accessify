@@ -62,7 +62,7 @@ export default function PageViewer({ pages, pageNumber, elements, selectedId, on
     return () => observer.disconnect()
   }, [])
 
-  if (!page) return <p className="p-6 text-sm text-slate-500">No slide previews were rendered for this run. Use the list on the left to review each description.</p>
+  if (!page) return <p className="p-6 text-sm text-slate-500">No pages were rendered for this run.</p>
 
   // Fit the whole slide inside the pane, then apply the zoom on top
   const availableWidth = Math.max(0, size.width - PADDING * 2)

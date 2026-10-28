@@ -10,6 +10,7 @@ import Inspector from './Inspector'
 import PageThumbnails from './PageThumbnails'
 import PageViewer from './PageViewer'
 import ReviewSidebar from './ReviewSidebar'
+import SlideOutline from './SlideOutline'
 import ReviewToolbar from './ReviewToolbar'
 import TranslateMenu from './TranslateMenu'
 
@@ -78,6 +79,10 @@ export default function ReviewView({ run, review, projectName, workspace, files,
   const flaggedOnPage = review.elements.filter(
     (element) => shownPages(element).includes(pageNumber) && needsAttention(element.status),
   )
+  // Every element of the current slide, in reading order, whatever the status filter says
+  const slideElements = (review.containers[pageNumber - 1]?.element_ids ?? [])
+    .map((id) => elementsById.get(id))
+    .filter((element): element is ReviewElement => element !== undefined)
   const selected = selectedId ? (elementsById.get(selectedId) ?? null) : null
 
   function toggle(status: ElementStatus) {
@@ -167,14 +172,26 @@ export default function ReviewView({ run, review, projectName, workspace, files,
         ) : null
       }
       center={
-        <PageViewer
-          pages={review.pages}
-          pageNumber={pageNumber}
-          elements={pageElements}
-          selectedId={selectedId}
-          onSelect={select}
-          onPage={setPageNumber}
-        />
+        review.pages.length > 0 ? (
+          <PageViewer
+            pages={review.pages}
+            pageNumber={pageNumber}
+            elements={pageElements}
+            selectedId={selectedId}
+            onSelect={select}
+            onPage={setPageNumber}
+          />
+        ) : (
+          <SlideOutline
+            slideCount={review.containers.length}
+            slideNumber={pageNumber}
+            title={slideTitles.get(review.containers[pageNumber - 1]?.id ?? '') ?? null}
+            elements={slideElements}
+            selectedId={selectedId}
+            onSelect={select}
+            onSlide={setPageNumber}
+          />
+        )
       }
       right={
         rightOpen ? (
