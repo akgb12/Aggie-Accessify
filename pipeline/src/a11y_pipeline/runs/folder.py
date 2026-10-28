@@ -1,6 +1,7 @@
 import difflib
 import json
 import re
+import shutil
 import subprocess
 import zipfile
 from dataclasses import dataclass
@@ -181,6 +182,8 @@ def _materialize_completed_run(
     # Build tagged PDF source archive snapshots report and manifest
     if state.bundle is None or state.final_ir is None:
         raise ValueError("Completed run state is missing its bundle or final IR")
+    if state.adapter_name == "pptx":
+        return _materialize_pptx_run(folder, state, input_path)
     if state.original_pdf is None or state.marked_pdf is None:
         raise ValueError("Completed run state is missing compiled PDFs")
     adapter = get_adapter(state.adapter_name)
@@ -248,6 +251,60 @@ def _materialize_completed_run(
     )
     write_manifest(folder.manifest_path, manifest)
     return CompletedRun(folder=folder, state=state, stats=stats)
+
+
+def _materialize_pptx_run(folder: RunFolder, state: RunState, input_path: Path) -> CompletedRun:
+    # A PowerPoint run returns the updated .pptx; PowerPoint itself makes the tagged PDF from it
+    if state.bundle is None or state.final_ir is None:
+        raise ValueError("Completed run state is missing its bundle or final IR")
+    adapter = get_adapter(state.adapter_name)
+    written = adapter.write_back(
+        state.bundle,
+        state.final_ir,
+        folder.output_dir / "updated_project",
+        folder.output_dir / "changes.diff",
+        folder.root / "work" / "updated_verify",
+        state.original_pdf,
+        state.config.compile_timeout_seconds,
+    )
+    deck = written.project_root / state.bundle.main_file
+    shutil.copy2(deck, folder.output_dir / "updated.pptx")
+    archive_project(written.project_root, folder.output_dir / "updated_project.zip")
+    pages: list[dict[str, Any]] = []
+    page_images: list[Path] = []
+    if state.original_pdf is not None:
+        page_images = render_pages(state.original_pdf, folder.root / "pages", dpi=PAGE_IMAGE_DPI)
+        thumbnails = render_pages(state.original_pdf, folder.root / "thumbs", dpi=THUMBNAIL_DPI)
+        pages = _page_records(state.original_pdf, page_images, thumbnails, folder.root)
+    for element in state.final_ir.elements.values():
+        element.attrs["visible_pages"] = list(element.render.pages)
+    selected = _selected_candidate(state)
+    combined_issues = _combined_issues(state, selected, list(written.issues))
+    state.issues = combined_issues
+    state.final_ir.issues = combined_issues
+    stats = build_report_stats(
+        state.final_ir,
+        selected,
+        folder.telemetry_path,
+        state.stop_reason or "unknown",
+        pixel_check=written.pixel_check,
+        text_similarity=100.0 if written.pixel_check.identical else 0.0,
+        issues=combined_issues,
+    )
+    write_run_snapshots(folder, state)
+    _write_operations(folder, [], written.operations)
+    manifest = build_manifest(state, state.bundle, input_path, [PROMPT_VERSION], pages)
+    manifest["outputs"] = _pptx_outputs()
+    write_manifest(folder.manifest_path, manifest)
+    return CompletedRun(folder=folder, state=state, stats=stats)
+
+
+def _pptx_outputs() -> list[dict[str, str]]:
+    # What a person can download from a finished PowerPoint run
+    return [
+        {"label": "Accessible PowerPoint (.pptx)", "path": "output/updated.pptx"},
+        {"label": "Changes", "path": "output/changes.diff"},
+    ]
 
 
 def _page_records(

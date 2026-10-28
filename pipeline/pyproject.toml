@@ -17,6 +17,7 @@ dependencies = [
     "pydantic>=2",
     "pydantic-settings",
     "pylatexenc>=2.10,<3",
+    "python-pptx>=1.0.2",
 ]
 
 [project.scripts]

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from a11y_pipeline.evaluation.pdf_checks import PdfCheckResult
+from a11y_pipeline.evaluation.pptx_checks import pptx_accessibility_metrics
 from a11y_pipeline.evaluation.scores import IndexScore, compute_preliminary_scores
 from a11y_pipeline.ir.models import Candidate, DocumentIR, Issue
 from a11y_pipeline.render.pixeldiff import PixelCheck
@@ -33,16 +34,11 @@ def build_report_stats(
 ) -> ReportStats:
     # Compute preliminary report indices and run totals
     all_issues = issues or []
-    accessibility_metrics: dict[str, float | None] = {
-        "T": _check_metric(pdf_checks, "structure_completeness"),
-        "R": _check_metric(pdf_checks, "structure_completeness"),
-        "H": _hierarchy_metric(ir),
-        "I": selected.scores.get("A") if _has_figures(ir) else None,
-        "B": None,
-        "M": _formula_metric(ir),
-        "D": _metadata_metric(pdf_checks),
-        "C": _checker_metric(pdf_checks),
-    }
+    if ir.source_format == "pptx":
+        figure_score = selected.scores.get("A") if _has_figures(ir) else None
+        accessibility_metrics = pptx_accessibility_metrics(ir, figure_score)
+    else:
+        accessibility_metrics = _pdf_accessibility_metrics(ir, selected, pdf_checks)
     fidelity_metrics: dict[str, float | None] = {
         "X": text_similarity,
         "E": _formula_metric(ir),
@@ -52,6 +48,38 @@ def build_report_stats(
         "Q_s": _semantic_consistency_metric(all_issues),
         "O": _output_completeness_metric(pdf_checks),
     }
+    return _report_stats(
+        ir, selected, telemetry_path, stop_reason, accessibility_metrics, fidelity_metrics
+    )
+
+
+def _pdf_accessibility_metrics(
+    ir: DocumentIR,
+    selected: Candidate,
+    pdf_checks: PdfCheckResult | None,
+) -> dict[str, float | None]:
+    # A components measured on the tagged PDF of a Beamer deck
+    return {
+        "T": _check_metric(pdf_checks, "structure_completeness"),
+        "R": _check_metric(pdf_checks, "structure_completeness"),
+        "H": _hierarchy_metric(ir),
+        "I": selected.scores.get("A") if _has_figures(ir) else None,
+        "B": None,
+        "M": _formula_metric(ir),
+        "D": _metadata_metric(pdf_checks),
+        "C": _checker_metric(pdf_checks),
+    }
+
+
+def _report_stats(
+    ir: DocumentIR,
+    selected: Candidate,
+    telemetry_path: Path,
+    stop_reason: str,
+    accessibility_metrics: dict[str, float | None],
+    fidelity_metrics: dict[str, float | None],
+) -> ReportStats:
+    # Combine the metrics with the run totals
     scores = compute_preliminary_scores(accessibility_metrics, fidelity_metrics)
     counts: dict[str, int] = {}
     for element in ir.elements.values():

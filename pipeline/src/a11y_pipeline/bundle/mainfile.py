@@ -1,3 +1,4 @@
+import zipfile
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -76,6 +77,19 @@ def is_beamer_main_file(path: Path) -> bool:
     return has_beamer_class and has_document
 
 
+PPTX_SUFFIX = ".pptx"
+
+
+def is_pptx_main_file(path: Path) -> bool:
+    # A PowerPoint deck is an OOXML zip; ignore Office's "~$" lock files
+    return (
+        path.suffix.lower() == PPTX_SUFFIX
+        and not path.name.startswith("~$")
+        and path.is_file()
+        and zipfile.is_zipfile(path)
+    )
+
+
 def _validated_override(root: Path, main_file: str) -> str:
     # Validate an explicitly selected main source
     root_resolved = root.resolve()
@@ -84,7 +98,10 @@ def _validated_override(root: Path, main_file: str) -> str:
         raise MainFileError(f"Main file escapes the bundle root: {main_file}")
     if not candidate.is_file():
         raise MainFileNotFoundError(f"Main file does not exist: {main_file}")
-    if not is_beamer_main_file(candidate):
+    if candidate.suffix.lower() == PPTX_SUFFIX:
+        if not is_pptx_main_file(candidate):
+            raise MainFileNotFoundError(f"File is not a PowerPoint (.pptx) deck: {main_file}")
+    elif not is_beamer_main_file(candidate):
         raise MainFileNotFoundError(f"File is not a Beamer main file: {main_file}")
     return candidate.relative_to(root_resolved).as_posix()
 
@@ -98,17 +115,31 @@ def list_beamer_main_files(root: Path) -> list[str]:
     return candidates
 
 
+def list_pptx_main_files(root: Path) -> list[str]:
+    # List every PowerPoint deck in a bundle, sorted by path
+    return [
+        path.relative_to(root).as_posix()
+        for path in sorted(root.rglob(f"*{PPTX_SUFFIX}"))
+        if "__MACOSX" not in path.parts and is_pptx_main_file(path)
+    ]
+
+
+def list_main_files(root: Path) -> list[str]:
+    # Every translatable entry point: Beamer sources and PowerPoint decks
+    return sorted([*list_beamer_main_files(root), *list_pptx_main_files(root)])
+
+
 def find_main_file(root: Path, main_file: str | None = None) -> str:
-    # Find the only Beamer entry point in a bundle
+    # Find the only entry point (Beamer source or PowerPoint deck) in a bundle
     if not root.is_dir():
         raise MainFileNotFoundError(f"Bundle root is not a directory: {root}")
     if main_file is not None:
         return _validated_override(root, main_file)
 
-    candidates = list_beamer_main_files(root)
+    candidates = list_main_files(root)
     if not candidates:
-        raise MainFileNotFoundError("No Beamer main file found")
+        raise MainFileNotFoundError("No Beamer main file or PowerPoint deck found")
     if len(candidates) > 1:
         names = ", ".join(candidates)
-        raise MultipleMainFilesError(f"Several Beamer main files found: {names}")
+        raise MultipleMainFilesError(f"Several main files found: {names}")
     return candidates[0]

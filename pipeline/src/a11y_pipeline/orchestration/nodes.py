@@ -1,6 +1,6 @@
 import hashlib
 
-from a11y_pipeline.adapters import get_adapter
+from a11y_pipeline.adapters import adapter_name_for, get_adapter
 from a11y_pipeline.analysis.needs import analyze_needs
 from a11y_pipeline.budget import BudgetExceeded
 from a11y_pipeline.bundle.bundle import Bundle
@@ -38,7 +38,7 @@ def ingest_node(state: RunState) -> dict[str, object]:
             return {}
         raise ValueError("input_path or base_ir is required")
     bundle = Bundle.from_path(state.input_path, state.main_file)
-    return {"bundle": bundle}
+    return {"bundle": bundle, "adapter_name": adapter_name_for(bundle.main_file)}
 
 
 def preflight_node(state: RunState) -> dict[str, object]:
@@ -215,8 +215,7 @@ def evaluate_node(state: RunState) -> dict[str, object]:
     candidates.append(evaluation.candidate)
     selected = select_best_candidate(
         candidates,
-        state.config.floor_a,
-        state.config.floor_f,
+        *_floors(state),
     )
     budget_spent = state.budget_spent
     if state.budget_controller is not None:
@@ -233,6 +232,12 @@ def evaluate_node(state: RunState) -> dict[str, object]:
         "budget_exhausted": budget_exhausted,
         "budget_spent": budget_spent,
     }
+
+
+def _floors(state: RunState) -> tuple[float, float]:
+    # The A floor depends on the source format; F is shared
+    floor_a = state.config.floor_a_pptx if state.adapter_name == "pptx" else state.config.floor_a
+    return floor_a, state.config.floor_f
 
 
 def _evaluate(
@@ -331,8 +336,7 @@ def decide_node(state: RunState) -> dict[str, object]:
     )
     selected = select_best_candidate(
         state.candidates,
-        state.config.floor_a,
-        state.config.floor_f,
+        *_floors(state),
     )
     return {"stop_reason": reason, "selected_candidate_id": selected.candidate_id}
 

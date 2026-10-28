@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     run_dollar_cap_high: float = 3.00
     floor_a: float = 60
     floor_f: float = 90
+    # Not calibrated: a described picture scores 60 (no label coverage), so the Beamer floor of 60
+    # would discard every picture-heavy deck. Pending PI approval.
+    floor_a_pptx: float = 0
     concept_coverage_threshold: float = 0.75
     element_repair_limit: int = 2
     judge_in_loop: bool = False

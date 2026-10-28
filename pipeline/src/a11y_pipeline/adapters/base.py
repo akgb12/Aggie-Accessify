@@ -13,8 +13,9 @@ from a11y_pipeline.synthesis.plan import OutputOperation
 class PreparedDocument:
     ir: DocumentIR
     figure_inputs: dict[str, FigureDescriptionInput]
-    original_pdf: Path
-    marked_pdf: Path
+    # Absent for formats that are not rendered to PDF in the run (PowerPoint without LibreOffice)
+    original_pdf: Path | None
+    marked_pdf: Path | None
 
 
 @dataclass(frozen=True)
@@ -56,7 +57,7 @@ class SourceAdapter(Protocol):
         output_root: Path,
         diff_path: Path,
         verification_root: Path,
-        original_pdf: Path,
+        original_pdf: Path | None,
         timeout_seconds: int,
     ) -> WrittenDocument:
         # Write and verify the format specific project

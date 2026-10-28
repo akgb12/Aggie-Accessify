@@ -25,7 +25,7 @@ ElementStatus = Literal[
     "missing_asset",
     "not_handled",
 ]
-MappingMethod = Literal["marker", "synctex", "position_match", "none"]
+MappingMethod = Literal["marker", "synctex", "position_match", "geometry", "none"]
 
 
 class StrictModel(BaseModel):
@@ -133,7 +133,7 @@ class Issue(StrictModel):
 class DocumentIR(StrictModel):
     schema_version: Literal["1"] = "1"
     document_id: str
-    source_format: Literal["tex-beamer"]
+    source_format: Literal["tex-beamer", "pptx"]
     main_file: str
     metadata: dict[str, str] = Field(default_factory=dict)
     containers: list[Container]

@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Any
 
 from a11y_pipeline.adapters.base import PreparedDocument, SourceAdapter, WrittenDocument
+from a11y_pipeline.adapters.context import figure_context
+from a11y_pipeline.adapters.pptx import PptxAdapter
 from a11y_pipeline.adapters.tex_beamer.aux_reader import apply_aux_mapping, read_aux
 from a11y_pipeline.adapters.tex_beamer.builder import build, summarize
 from a11y_pipeline.adapters.tex_beamer.compile import (
@@ -149,7 +151,13 @@ def _tolerated_errors_issue(count: int, messages: tuple[str, ...]) -> Issue:
 
 ADAPTER_REGISTRY: dict[str, SourceAdapter] = {
     "tex-beamer": TexBeamerAdapter(),
+    "pptx": PptxAdapter(),
 }
+
+
+def adapter_name_for(main_file: str) -> str:
+    # A PowerPoint deck uses the pptx adapter; every other entry point is Beamer source
+    return "pptx" if main_file.lower().endswith(".pptx") else "tex-beamer"
 
 
 def get_adapter(name: str) -> SourceAdapter:
@@ -174,7 +182,7 @@ def _figure_inputs(
             continue
         if not element.render.pages or element.render.bbox is None:
             continue
-        slide_title, nearby_text = _figure_context(ir, element)
+        slide_title, nearby_text = figure_context(ir, element)
         labels = _figure_labels(element)
         visible = list(labels)
         hidden: list[str] = []
@@ -211,40 +219,6 @@ def _figure_inputs(
     return inputs
 
 
-def _figure_context(ir: DocumentIR, figure: Element) -> tuple[str | None, list[str]]:
-    # Gather the slide title and nearby visible text
-    container_id = figure.id.split("/", 1)[0]
-    slide_title = None
-    nearby: list[str] = []
-    container = None
-    for candidate in ir.containers:
-        if candidate.id == container_id:
-            container = candidate
-            break
-    if container is not None and container.title_element_id is not None:
-        title = ir.elements.get(container.title_element_id)
-        if title is not None:
-            slide_title = _element_text(title)
-    prefix = f"{container_id}/"
-    for element in ir.elements.values():
-        if not element.id.startswith(prefix):
-            continue
-        if element.id == figure.id or element.semantic_type in {"figure", "heading"}:
-            continue
-        text = _element_text(element)
-        if text:
-            nearby.append(text)
-    return slide_title, nearby
-
-
-def _element_text(element: Element) -> str | None:
-    # Read plain visible text from one element
-    text = element.content.get("text")
-    if isinstance(text, str) and text.strip():
-        return text.strip()
-    return None
-
-
 def _figure_labels(element: Element) -> list[str]:
     # Read or infer source labels for one diagram
     if element.subtype != "diagram":
@@ -260,6 +234,7 @@ def _figure_labels(element: Element) -> list[str]:
 
 __all__ = [
     "ADAPTER_REGISTRY",
+    "adapter_name_for",
     "PreparedDocument",
     "SourceAdapter",
     "WrittenDocument",
