@@ -5,6 +5,8 @@ from pathlib import Path
 
 MAC_APP_PATH = "/Applications/LibreOffice.app/Contents/MacOS/soffice"
 RENDER_TIMEOUT_SECONDS = 180
+# Hidden slides are skipped by default, which would shift every later page off its slide
+PDF_FILTER = 'pdf:impress_pdf_Export:{"ExportHiddenSlides":{"type":"boolean","value":"true"}}'
 
 
 def find_soffice() -> str | None:
@@ -28,7 +30,7 @@ def render_deck_pdf(deck: Path, output_dir: Path) -> Path | None:
         f"-env:UserInstallation=file://{profile}",
         "--headless",
         "--convert-to",
-        "pdf",
+        PDF_FILTER,
         "--outdir",
         str(output_dir),
         str(deck),
