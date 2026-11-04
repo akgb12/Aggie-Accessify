@@ -1,3 +1,4 @@
+import difflib
 import re
 
 from a11y_pipeline.evaluation.concepts import (
@@ -8,6 +9,10 @@ from a11y_pipeline.evaluation.concepts import (
 )
 from a11y_pipeline.evaluation.mathtext import fold_math
 from a11y_pipeline.ir.models import DocumentIR, Element, Issue
+
+# A quote this similar to drawn text counts as that text, misread; short quotes must match exactly
+NEAR_MATCH_RATIO = 0.8
+NEAR_MATCH_MIN_CHARS = 6
 
 
 def figure_contradiction_veto(
@@ -40,6 +45,9 @@ def figure_contradiction_veto(
                     message="Figure alternative text states a conflicting sequence count",
                     details={"expected": expected, "stated": count, "stem": parts[2]},
                 )
+    # Text inside a picture cannot be read without OCR, so its quotes cannot be checked
+    if element.attrs.get("text_unverifiable"):
+        return None
     # Without any extracted labels there is nothing to compare quotes against
     can_compare = bool(visible_labels) or bool(element.fidelity.excluded_concepts)
     # Words drawn in the figure (axis names, edge labels) are as visible as extracted node labels
@@ -177,8 +185,25 @@ def _unknown_quoted_label(
         quoted_words = _folded_words(quoted)
         if quoted_words and any(_contains_words(words, quoted_words) for words in drawn):
             continue
+        if any(_nearly_contains(words, quoted_words) for words in drawn):
+            continue
         return quoted
     return None
+
+
+def _nearly_contains(words: list[str], quoted_words: list[str]) -> bool:
+    # Allow for small reading errors when the drawn text comes from OCR ("µ" read as "p",
+    # "rn" as "m"): a quote within NEAR_MATCH_RATIO of some stretch of drawn text is not invented
+    quoted = "".join(quoted_words)
+    if len(quoted) < NEAR_MATCH_MIN_CHARS:
+        return False
+    drawn = "".join(words)
+    size = len(quoted)
+    for start in range(max(1, len(drawn) - size + 1)):
+        window = drawn[start : start + size]
+        if difflib.SequenceMatcher(None, quoted, window).ratio() >= NEAR_MATCH_RATIO:
+            return True
+    return False
 
 
 def _folded_words(text: str) -> list[str]:

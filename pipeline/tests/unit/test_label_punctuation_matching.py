@@ -153,3 +153,22 @@ def test_partial_words_and_invented_labels_are_still_vetoed() -> None:
     assert figure_contradiction_veto(partial, visible) is not None
     invented = _figure('The box "Profit margin" is shown.', [])
     assert figure_contradiction_veto(invented, visible) is not None
+
+
+def test_a_quote_misread_slightly_by_ocr_is_not_a_contradiction() -> None:
+    # OCR read the drawn "as mean: μ" as "as mean: p"
+    figure = _figure("An arrow from 'as mean: mu' points to the u sub n term.", [])
+    assert figure_contradiction_veto(figure, ["Standard deviation"], ["as", "mean:", "p"]) is None
+
+
+def test_a_quote_unlike_any_drawn_text_is_still_vetoed() -> None:
+    figure = _figure("The box reads 'gradient boosting'.", [])
+    issue = figure_contradiction_veto(figure, ["Standard deviation"], ["as", "mean:", "p"])
+    assert issue is not None and issue.details["quoted_label"] == "gradient boosting"
+
+
+def test_quotes_are_not_checked_when_the_figure_text_cannot_be_read() -> None:
+    # Text inside a picture, with no OCR available, cannot be compared
+    figure = _figure("The code reads 'then return node'.", [])
+    figure.attrs["text_unverifiable"] = True
+    assert figure_contradiction_veto(figure, ["Check the closed"], []) is None
