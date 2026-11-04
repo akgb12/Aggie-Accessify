@@ -1,7 +1,7 @@
-import { UploadCloud } from 'lucide-react'
+import { Upload } from 'lucide-react'
 import { useState } from 'react'
+import { buttonClasses, cx } from './classes'
 import { Spinner } from './ui'
-import { cx } from './classes'
 
 export default function Dropzone({
   onFiles,
@@ -15,7 +15,7 @@ export default function Dropzone({
   const [dragging, setDragging] = useState(false)
 
   return (
-    <label
+    <div
       onDragOver={(e) => {
         e.preventDefault()
         setDragging(true)
@@ -28,36 +28,41 @@ export default function Dropzone({
         if (files.length > 0 && !busy) onFiles(files)
       }}
       className={cx(
-        'flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed text-center transition-colors',
-        'focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-brand-600',
-        compact ? 'px-4 py-5' : 'px-6 py-9',
-        dragging ? 'border-brand-500 bg-brand-50' : 'border-slate-300 bg-slate-50 hover:border-brand-400',
-        busy && 'pointer-events-none opacity-70',
+        'flex flex-col items-center justify-center rounded-lg border border-dashed text-center transition-colors',
+        compact ? 'px-4 py-6' : 'px-6 py-12',
+        dragging ? 'border-brand-800 bg-brand-50' : 'border-slate-300 bg-slate-50',
       )}
     >
-      {busy ? (
-        <Spinner className="mb-2 h-6 w-6 text-brand-700" />
-      ) : (
-        <UploadCloud aria-hidden className="mb-2 h-7 w-7 text-brand-700" />
-      )}
-      <span className="text-sm font-medium text-slate-800">
-        {busy ? 'Uploading…' : 'Drop a .pptx deck, a project .zip or files here'}
+      <span
+        aria-hidden
+        className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-white text-slate-700 ring-1 ring-slate-200"
+      >
+        {busy ? <Spinner className="h-5 w-5" /> : <Upload className="h-5 w-5" />}
       </span>
-      <span className="mt-0.5 text-sm text-slate-500">
-        or <span className="font-medium text-brand-700 underline">browse your computer</span>
-      </span>
-      <input
-        type="file"
-        multiple
-        disabled={busy}
-        className="sr-only"
-        aria-label="Upload a project zip or individual files"
-        onChange={(e) => {
-          const files = Array.from(e.target.files ?? [])
-          if (files.length > 0) onFiles(files)
-          e.target.value = ''
-        }}
-      />
-    </label>
+      <p className="text-base font-semibold text-slate-900" aria-live="polite">
+        {busy ? 'Uploading your files' : 'Drag your slides here'}
+      </p>
+      <p className="mt-1 text-sm text-slate-600">A PowerPoint deck (.pptx), or a .zip of a LaTeX Beamer project</p>
+      <label
+        className={cx(
+          buttonClasses('primary'),
+          'mt-5 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-brand-600',
+          busy && 'pointer-events-none opacity-50',
+        )}
+      >
+        Choose files
+        <input
+          type="file"
+          multiple
+          disabled={busy}
+          className="sr-only"
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? [])
+            if (files.length > 0) onFiles(files)
+            e.target.value = ''
+          }}
+        />
+      </label>
+    </div>
   )
 }
