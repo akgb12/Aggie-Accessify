@@ -215,6 +215,9 @@ def test_prepare_sends_picture_pixels_and_skips_unrenderable_shapes(
     image = Image.open(io.BytesIO(prepared.figure_inputs["slide_01/figure_01"].image_png))
     assert image.size == (60, 40)
     assert prepared.figure_inputs["slide_01/figure_01"].slide_title == "Gradient descent"
+    # The figure also knows the lesson around it, and that it holds a picture
+    assert prepared.figure_inputs["slide_01/figure_01"].other_titles == ["Pipeline"]
+    assert prepared.ir.elements["slide_01/figure_01"].attrs["contains_picture"] is True
     if find_soffice() is None:
         assert "slide_02/figure_01" not in prepared.figure_inputs
         assert any(issue.code == "figure_image_unavailable" for issue in prepared.ir.issues)

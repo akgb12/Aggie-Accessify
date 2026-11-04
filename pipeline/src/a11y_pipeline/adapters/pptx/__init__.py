@@ -102,6 +102,8 @@ class PptxAdapter:
                 ir.issues.extend(build_figure_concepts(element, nearby).issues)
             drawn = list(labels) + drawn_words.inside(element)
             if _contains_picture(ir, element):
+                # The loop transcribes the text of every figure holding a picture
+                element.attrs["contains_picture"] = True
                 read = ocr_words(image)
                 if read is not None and len(read) >= MIN_OCR_WORDS:
                     drawn.extend(read)
@@ -117,6 +119,7 @@ class PptxAdapter:
                 slide_title=slide_title,
                 nearby_text=nearby,
                 rendered_text=drawn,
+                other_titles=_neighbour_titles(ir, element.render.pages[0]),
             )
         ir.issues.extend(issues)
         return PreparedDocument(
