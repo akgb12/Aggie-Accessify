@@ -81,7 +81,7 @@ export default function ElementList({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search slides"
-            className="w-full rounded-lg border border-slate-300 py-2 pl-8 pr-3 text-sm placeholder:text-slate-400"
+            className="h-9 w-full rounded-md border border-slate-300 pl-8 pr-3 text-sm placeholder:text-slate-400"
           />
         </label>
         <div className="flex items-center justify-between">
@@ -93,7 +93,7 @@ export default function ElementList({
                 onClick={() => setScope(value)}
                 className={cx(
                   'whitespace-nowrap rounded-md px-2.5 py-1',
-                  scope === value ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100',
+                  scope === value ? 'bg-slate-100 font-semibold text-slate-900' : 'text-slate-600 hover:bg-slate-100',
                 )}
               >
                 {value === 'page' ? `Page ${pageNumber}` : 'All slides'}
@@ -107,7 +107,7 @@ export default function ElementList({
               <>
                 Filter
                 {hiddenStatuses > 0 && (
-                  <span className="rounded-full bg-slate-200 px-1.5 text-[11px] text-slate-700">{hiddenStatuses}</span>
+                  <span className="rounded-md bg-slate-100 px-1.5 text-xs text-slate-800">{hiddenStatuses}</span>
                 )}
               </>
             }

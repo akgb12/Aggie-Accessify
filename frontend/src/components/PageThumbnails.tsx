@@ -43,7 +43,7 @@ export default function PageThumbnails({
                 decoding="async"
                 className="absolute inset-0 h-full w-full"
               />
-              <span className="absolute bottom-0 left-0 rounded-tr bg-slate-900/70 px-1.5 text-[11px] text-white">
+              <span className="absolute bottom-0 left-0 rounded-tr bg-slate-900/80 px-1.5 text-xs text-white">
                 {page.number}
               </span>
               {flaggedPages.has(page.number) && (

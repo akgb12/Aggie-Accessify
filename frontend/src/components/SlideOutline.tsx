@@ -68,7 +68,7 @@ export default function SlideOutline({
                   onClick={() => onSelect(element.id)}
                   aria-pressed={selectedId === element.id}
                   className={cx(
-                    'flex w-full gap-4 rounded-xl border bg-white p-3 text-left shadow-sm hover:border-brand-300',
+                    'flex w-full gap-4 rounded-lg border bg-white p-3 text-left hover:border-slate-400',
                     selectedId === element.id ? 'border-brand-600 ring-1 ring-brand-600' : 'border-slate-200',
                   )}
                 >

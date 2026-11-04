@@ -22,7 +22,7 @@ export default function PageOverlay({ page, width, height, elements, selectedId,
   const pinRadius = page.width_points * 0.011
 
   return (
-    <div className="relative bg-white shadow-md ring-1 ring-slate-300" style={{ width, height }}>
+    <div className="relative bg-white ring-1 ring-slate-200" style={{ width, height }}>
       {failedUrl === page.image_url ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-slate-500">
           <ImageOff aria-hidden className="h-6 w-6" />
