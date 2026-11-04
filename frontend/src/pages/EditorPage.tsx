@@ -7,7 +7,7 @@ import FilesPanel from '../components/FilesPanel'
 import ReviewView from '../components/ReviewView'
 import { Alert, Skeleton } from '../components/ui'
 import { editorPath, pickFile } from '../editorState'
-import { usePersistentFlag } from '../hooks'
+import { useDocumentTitle, usePersistentFlag } from '../hooks'
 import type { Run } from '../types'
 import { useRun } from '../useRun'
 import { useWorkspaceData } from '../workspace'
@@ -23,6 +23,7 @@ export default function EditorPage() {
   const file = pickFile(params.get('file'), targets, runs)
   const runId = params.get('run') ?? (file ? (latestByFile.get(file)?.id ?? null) : null)
   const followed = useRun(runId, reload)
+  useDocumentTitle(file ? file.split('/').pop() : project?.name)
 
   const select = useCallback((path: string) => navigate(editorPath(id, path)), [id, navigate])
   const started = useCallback(
@@ -36,7 +37,7 @@ export default function EditorPage() {
   if (!project) {
     return workspace.error ? (
       <div className="p-6">
-        <Alert tone="danger" title="Could not load this project">
+        <Alert tone="danger" title="This project could not be loaded">
           {workspace.error}
         </Alert>
       </div>

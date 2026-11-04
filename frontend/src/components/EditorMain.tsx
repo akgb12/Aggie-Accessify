@@ -1,4 +1,4 @@
-import { Accessibility, FileText, Presentation } from 'lucide-react'
+import { FileText, MousePointerClick, Presentation } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
@@ -21,7 +21,7 @@ function Elapsed({ since }: { since: string }) {
 function Centered({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-full items-center justify-center overflow-auto bg-slate-50 p-6">
-      <div className="w-full max-w-md">{children}</div>
+      <div className="w-full max-w-lg">{children}</div>
     </div>
   )
 }
@@ -41,9 +41,9 @@ export default function EditorMain({ project, targets, file, run, loadError, onS
   if (noTargets === 'no_tex') {
     return (
       <Centered>
-        <EmptyState icon={<FileText aria-hidden className="h-6 w-6" />} title="No slides in this project">
-          Only PDFs or other files were found. Use “Add files” on the left to add a PowerPoint (.pptx)
-          deck or the Beamer source of your slides; a PDF alone cannot be translated.
+        <EmptyState icon={<FileText aria-hidden className="h-6 w-6" />} title="No slide decks in this project">
+          Only PDFs or other files were found. Use Add files on the left to add a PowerPoint (.pptx) deck or the
+          LaTeX source of your Beamer slides. A PDF alone cannot be made accessible here.
         </EmptyState>
       </Centered>
     )
@@ -52,8 +52,8 @@ export default function EditorMain({ project, targets, file, run, loadError, onS
     return (
       <Centered>
         <EmptyState icon={<Presentation aria-hidden className="h-6 w-6" />} title="No Beamer presentation found">
-          None of the .tex files is a Beamer presentation (it needs a beamer document class and a document
-          body). Add the right file with “Add files” on the left.
+          None of the .tex files is a Beamer presentation, which needs the beamer document class and a document
+          body. Add the right file with Add files on the left.
         </EmptyState>
       </Centered>
     )
@@ -61,10 +61,11 @@ export default function EditorMain({ project, targets, file, run, loadError, onS
 
   if (!file) {
     return (
-      <div className="flex h-full items-center justify-center bg-slate-50">
-        <Accessibility aria-hidden className="h-40 w-40 text-slate-200" strokeWidth={1.25} />
-        <p className="sr-only">Choose a presentation from the file list to translate it.</p>
-      </div>
+      <Centered>
+        <EmptyState icon={<MousePointerClick aria-hidden className="h-6 w-6" />} title="Choose a slide deck">
+          Select a deck in the file list on the left to make it accessible or to review the last run.
+        </EmptyState>
+      </Centered>
     )
   }
 
@@ -72,20 +73,20 @@ export default function EditorMain({ project, targets, file, run, loadError, onS
     return (
       <Centered>
         <div role="status" aria-live="polite" className="text-center">
-          <Spinner className="mx-auto h-8 w-8 text-brand-700" />
-          <p className="mt-3 text-base font-semibold text-slate-900">
-            {run.status === 'queued' ? 'Waiting for a worker…' : 'Making your slides accessible…'}
+          <Spinner className="mx-auto h-8 w-8 text-brand-800" />
+          <p className="mt-4 text-lg font-semibold text-slate-900">
+            {run.status === 'queued' ? 'Waiting to start' : 'Making your slides accessible'}
           </p>
-          <p className="mt-1 text-sm text-slate-500">
-            Compiling, finding figures, writing descriptions and tagging the PDF. Large decks can take a few
-            minutes.
+          <p className="mt-1 text-sm text-slate-600">
+            Describing figures, fixing titles and reading order, and checking that nothing visible changed. Large
+            decks take a few minutes. You can leave this page and come back.
           </p>
-          <div className="mx-auto mt-4 h-1.5 w-64 overflow-hidden rounded-full bg-slate-100">
-            <div className="animate-indeterminate h-full w-1/4 rounded-full bg-brand-600" />
+          <div className="mx-auto mt-5 h-1.5 w-64 overflow-hidden rounded-full bg-slate-200">
+            <div className="animate-indeterminate h-full w-1/4 rounded-full bg-brand-800" />
           </div>
-          <p className="mt-2 text-xs text-slate-400">
-            <span className="capitalize">{run.effort}</span> effort · elapsed{' '}
-            <Elapsed since={run.started_at ?? run.created_at} />
+          <p className="mt-3 text-sm text-slate-600">
+            <span className="capitalize">{run.effort}</span> effort · <Elapsed since={run.started_at ?? run.created_at} />{' '}
+            elapsed
           </p>
         </div>
       </Centered>
@@ -95,39 +96,39 @@ export default function EditorMain({ project, targets, file, run, loadError, onS
   let notice: ReactNode = null
   if (loadError) {
     notice = (
-      <Alert tone="danger" title="Could not load this translation">
+      <Alert tone="danger" title="This run could not be loaded">
         {loadError}
       </Alert>
     )
   } else if (run?.status === 'failed') {
     notice = (
-      <Alert tone="danger" title="The translation failed">
-        {run.error_message || 'The pipeline stopped unexpectedly. Check the worker log for details.'}
+      <Alert tone="danger" title="The last run failed">
+        {run.error_message || 'It stopped unexpectedly. Try again, and contact the team if it fails again.'}
       </Alert>
     )
   } else if (run?.status === 'blocked') {
     notice = (
-      <Alert tone="warning" title="This file could not be translated yet">
-        Reason: {run.stop_reason.replace(/_/g, ' ') || 'pre-flight check failed'}. If files are missing, add
-        them with “Add files” on the left, then translate again.
+      <Alert tone="warning" title="Some files are needed first">
+        Reason: {run.stop_reason.replace(/_/g, ' ') || 'the first checks did not pass'}. If files are missing, add
+        them with Add files on the left, then start again.
       </Alert>
     )
   }
 
   return (
     <Centered>
-      <div className="space-y-4">
+      <div className="space-y-5 rounded-lg border border-slate-200 bg-white p-6">
         <div>
-          <p className="truncate font-mono text-sm font-medium text-slate-800" title={file}>
-            {file}
-          </p>
-          <p className="mt-0.5 text-sm text-slate-500">
+          <h1 className="truncate text-xl font-semibold text-slate-900" title={file}>
+            {file.split('/').pop()}
+          </h1>
+          <p className="mt-1 text-sm text-slate-600">
             {run ? (
               <span className="inline-flex items-center gap-2">
-                <RunStatusBadge status={run.status} /> Last attempt {relativeTime(run.created_at)}
+                <RunStatusBadge status={run.status} /> Last run {relativeTime(run.created_at)}
               </span>
             ) : (
-              'Not translated yet. Pick an effort level and start.'
+              'Not made accessible yet. Choose an effort, then start.'
             )}
           </p>
         </div>
@@ -136,9 +137,9 @@ export default function EditorMain({ project, targets, file, run, loadError, onS
         {run && run.status === 'succeeded' && (
           <Link
             to={editorPath(project.id, file, run.id)}
-            className="block text-center text-sm text-brand-700 underline"
+            className="block text-center text-sm font-semibold text-brand-800 underline underline-offset-4"
           >
-            Open the earlier translation
+            Open the last finished run
           </Link>
         )}
       </div>
