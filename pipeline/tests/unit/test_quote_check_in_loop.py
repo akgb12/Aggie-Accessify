@@ -61,3 +61,32 @@ def test_a_quote_of_other_text_on_the_slide_needs_no_model_check(tmp_path: Path)
     assert all(request.prompt_version != "quote_check_v1" for request in fake.requests)
     assert state.final_ir is not None
     assert state.final_ir.elements[CV_ID].accessibility.alt_text == quoting_title["alt_text"]
+
+
+def test_a_picture_is_transcribed_first_and_its_text_makes_quotes_checkable(
+    tmp_path: Path,
+) -> None:
+    document = _document()
+    figure = document.elements[CV_ID]
+    figure.attrs["contains_picture"] = True
+    figure.attrs["text_unverifiable"] = True
+    transcription = {"text": ["Fold 1", "held out once"]}
+    fake = FakeModelClient(scripts={CV_ID: [transcription, QUOTING_CV]})
+    state = run_pipeline(
+        model_client=fake,
+        effort="medium",
+        settings=_settings(),
+        run_id="inventory",
+        telemetry_path=tmp_path / "telemetry.jsonl",
+        base_ir=document,
+        figure_inputs=_inputs(),
+    )
+    versions = [request.prompt_version for request in fake.requests]
+    assert versions == ["text_inventory_v1", "figure_description_v4"]
+    # The describer saw the transcription; the quote was found in it, so no check was needed
+    assert "held out once" in fake.requests[1].messages[0].text
+    assert state.figure_inputs[CV_ID].image_text == ["Fold 1", "held out once"]
+    assert state.base_ir is not None
+    assert state.base_ir.elements[CV_ID].attrs["text_unverifiable"] is False
+    assert state.final_ir is not None
+    assert state.final_ir.elements[CV_ID].accessibility.alt_text == QUOTING_CV["alt_text"]

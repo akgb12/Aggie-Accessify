@@ -14,6 +14,7 @@ from a11y_pipeline.capabilities.base import (
 from a11y_pipeline.capabilities.feedback import repair_problems
 from a11y_pipeline.capabilities.figure_judge import FigureJudgeCapability
 from a11y_pipeline.capabilities.quote_check import QuoteCheckCapability
+from a11y_pipeline.capabilities.text_inventory import TextInventoryCapability
 from a11y_pipeline.evaluation.vetoes import unknown_quoted_labels
 from a11y_pipeline.ir.models import Candidate, DocumentIR, HistoryEntry, Issue, Patch
 from a11y_pipeline.ir.patches import apply_patches
@@ -139,6 +140,7 @@ def run_capabilities_node(state: RunState) -> dict[str, object]:
     issues = list(state.issues)
     budget_exhausted = state.budget_exhausted
     figure_inputs = dict(state.figure_inputs)
+    base_ir = state.base_ir
     for routed in state.routed_tasks:
         element_id = routed.task.element_id
         if state.current_round == 0 and element_id == state.seed_weak_element_id:
@@ -158,6 +160,21 @@ def run_capabilities_node(state: RunState) -> dict[str, object]:
                 )
             )
             continue
+        if routed.task.capability == "figure_description" and state.current_round == 0:
+            try:
+                transcribed = _transcribe_picture(state, capability_input)
+            except BudgetExceeded:
+                budget_exhausted = True
+                break
+            if transcribed is not None:
+                capability_input = capability_input.model_copy(
+                    update={
+                        "image_text": transcribed,
+                        "rendered_text": [*capability_input.rendered_text, *transcribed],
+                    }
+                )
+                figure_inputs[element_id] = capability_input
+                base_ir = _text_now_checkable(base_ir, element_id)
         capability = routed.capability(
             state.model_client,
             model=state.config.generator_model,
@@ -175,7 +192,7 @@ def run_capabilities_node(state: RunState) -> dict[str, object]:
         results.append(_append_history_patch(state, result, element_id))
         if routed.task.capability == "figure_description":
             try:
-                confirmed = _confirm_quotes(state, capability_input, result)
+                confirmed = _confirm_quotes(state, base_ir, capability_input, result)
             except BudgetExceeded:
                 budget_exhausted = True
                 break
@@ -192,11 +209,36 @@ def run_capabilities_node(state: RunState) -> dict[str, object]:
         "budget_exhausted": budget_exhausted,
         "budget_spent": budget_spent,
         "figure_inputs": figure_inputs,
+        "base_ir": base_ir,
     }
+
+
+def _transcribe_picture(
+    state: RunState, capability_input: FigureDescriptionInput
+) -> list[str] | None:
+    # Transcribe the words drawn in a figure that holds a picture, from the image alone, so
+    # the description can quote them exactly and the checks can confirm the quotes
+    if not state.config.transcribe_pictures or state.model_client is None:
+        return None
+    element = _require_base_ir(state).elements.get(capability_input.element_id)
+    if element is None or not element.attrs.get("contains_picture"):
+        return None
+    inventory = TextInventoryCapability(state.model_client, model=state.config.generator_model)
+    return inventory.transcribe(capability_input.element_id, capability_input.image_png)
+
+
+def _text_now_checkable(base_ir: DocumentIR | None, element_id: str) -> DocumentIR | None:
+    # With a transcription, quotes of a picture's text can be checked after all
+    if base_ir is None or not base_ir.elements[element_id].attrs.get("text_unverifiable"):
+        return base_ir
+    updated = base_ir.model_copy(deep=True)
+    updated.elements[element_id].attrs["text_unverifiable"] = False
+    return updated
 
 
 def _confirm_quotes(
     state: RunState,
+    base_ir: DocumentIR | None,
     capability_input: FigureDescriptionInput,
     result: CapabilityResult,
 ) -> list[str]:
@@ -205,7 +247,9 @@ def _confirm_quotes(
     # the figure's drawn text, so the evaluator accepts them; the rest are still vetoed.
     if not state.config.verify_quotes or state.model_client is None:
         return []
-    element = _require_base_ir(state).elements.get(capability_input.element_id)
+    if base_ir is None:
+        return []
+    element = base_ir.elements.get(capability_input.element_id)
     if element is None or element.attrs.get("text_unverifiable"):
         return []
     values = {patch.path: patch.value for patch in result.patches}

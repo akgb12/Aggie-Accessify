@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     judge_in_loop: bool = False
     # Ask the model whether a quote the checks cannot find is really written in the figure
     verify_quotes: bool = True
+    # Transcribe the text drawn in figures that hold a picture before describing them
+    transcribe_pictures: bool = True
     runs_dir: Path = Path("runs")
     tex_engine: str = "pdflatex"
     compile_timeout_seconds: int = 180

@@ -9,6 +9,7 @@ from a11y_pipeline.capabilities.base import (
     FigureJudgeOutput,
     QuoteCheckOutput,
     SlideTitleOutput,
+    TextInventoryOutput,
 )
 from a11y_pipeline.config import Settings
 from a11y_pipeline.ir.serialize import dumps_document
@@ -131,6 +132,9 @@ def _good_fake_response(request: ModelRequest) -> ScriptValue:
     # Return deterministic useful descriptions for local runs
     if request.output_schema is FigureJudgeOutput:
         return {"verdict": "good", "invented": [], "missing": []}
+    if request.output_schema is TextInventoryOutput:
+        # The fake model cannot see, so it transcribes nothing
+        return {"text": []}
     if request.output_schema is QuoteCheckOutput:
         # The fake model cannot see; it confirms nothing, so invented quotes stay vetoed
         return {"results": []}
