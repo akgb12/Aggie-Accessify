@@ -94,6 +94,7 @@ export default function Inspector({
           <StatusSwatch status={element.status} size={18} />
           {statusLabel(element.status)}
         </p>
+        {element.note && <p className="mt-2 text-sm text-slate-600">{element.note}</p>}
       </div>
 
       {element.text && element.text.length > label.title.length && (

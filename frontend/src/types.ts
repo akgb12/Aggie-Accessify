@@ -153,6 +153,8 @@ export interface ReviewElement {
   source: { file: string | null; line_start: number | null; line_end: number | null } | null
   history: HistoryEntry[]
   issues: ReviewIssue[]
+  // What the update did to a PowerPoint shape besides its text
+  note?: string | null
 }
 
 export interface ReviewContainer {
