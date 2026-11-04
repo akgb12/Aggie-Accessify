@@ -105,6 +105,38 @@ const WORDING: Record<string, IssueWording> = {
     title: 'LaTeX reported small errors',
     explanation: 'The PDF was still produced, the same as on Overleaf.',
   },
+  duplicate_title: {
+    title: 'Slides share a title',
+    explanation: 'Screen reader users jump between slides by title, so repeated titles look like one slide.',
+  },
+  low_contrast: {
+    title: 'Text is hard to read against its background',
+    explanation: 'The text color is too close to the background. Use a darker or lighter color.',
+  },
+  slide_missing_title: {
+    title: 'Slide has no title',
+    explanation: 'Screen reader users cannot find this slide in the slide list.',
+  },
+  title_not_first: {
+    title: 'Title is not read first',
+    explanation: 'Moving it automatically would change the slide, so reorder it in PowerPoint.',
+  },
+  layout_change_undone: {
+    title: 'A fix was undone to keep the slide unchanged',
+    explanation: 'The change altered how the slide looks, so it was reversed. You can make it by hand.',
+  },
+  figure_image_unavailable: {
+    title: 'Figure could not be shown to the describer',
+    explanation: 'No picture of this figure could be made, so it was not described.',
+  },
+  table_header_unchecked: {
+    title: 'Table header row not marked',
+    explanation: 'The first row looks like a header. Turn on Header Row in PowerPoint if the look is fine.',
+  },
+  description_rejected: {
+    title: 'A description was rejected',
+    explanation: 'It quoted text that is not in the figure, so it was not used.',
+  },
 }
 
 export function describeIssue(issue: ReviewIssue): IssueWording {
