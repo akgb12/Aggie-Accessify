@@ -7,15 +7,16 @@ interface StatusStyle {
   dash: string
 }
 
+// Only the TAMU status colors; dash patterns keep every status distinct without color
 export const STATUS_STYLES: Record<ElementStatus, StatusStyle> = {
-  done: { label: 'Done', color: '#059669', dash: '' },
-  deterministic: { label: 'Done', color: '#059669', dash: '' },
-  model_generated: { label: 'Model generated', color: '#2563eb', dash: '' },
-  needs_description: { label: 'Needs description', color: '#ea580c', dash: '7 4' },
-  needs_review: { label: 'Needs review', color: '#b45309', dash: '2 3' },
-  failed: { label: 'Failed', color: '#dc2626', dash: '10 3 2 3' },
-  missing_asset: { label: 'Missing asset', color: '#9333ea', dash: '4 4' },
-  not_handled: { label: 'Not handled', color: '#64748b', dash: '1 4' },
+  done: { label: 'Done', color: '#166534', dash: '' },
+  deterministic: { label: 'Done', color: '#166534', dash: '' },
+  model_generated: { label: 'Described by AI', color: '#1e40af', dash: '' },
+  needs_description: { label: 'Needs a description', color: '#92400e', dash: '7 4' },
+  needs_review: { label: 'Needs review', color: '#92400e', dash: '2 3' },
+  failed: { label: 'Failed', color: '#b91c1c', dash: '10 3 2 3' },
+  missing_asset: { label: 'Missing file', color: '#b91c1c', dash: '4 4' },
+  not_handled: { label: 'Not handled', color: '#626262', dash: '1 4' },
 }
 
 // Legend entries: deterministic is folded into done
@@ -29,7 +30,7 @@ export const LEGEND_STATUSES: ElementStatus[] = [
   'not_handled',
 ]
 
-const FALLBACK: StatusStyle = { label: 'Unknown', color: '#64748b', dash: '' }
+const FALLBACK: StatusStyle = { label: 'Unknown', color: '#626262', dash: '' }
 
 export function statusStyle(status: string): StatusStyle {
   return STATUS_STYLES[status as ElementStatus] ?? FALLBACK

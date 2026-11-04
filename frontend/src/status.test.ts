@@ -10,9 +10,9 @@ import {
 
 describe('status helpers', () => {
   it('uses a neutral style for unknown statuses', () => {
-    expect(statusColor('model_generated')).toBe('#2563eb')
-    expect(statusColor('something_else')).toBe('#64748b')
-    expect(statusLabel('needs_description')).toBe('Needs description')
+    expect(statusColor('model_generated')).toBe('#1e40af')
+    expect(statusColor('something_else')).toBe('#626262')
+    expect(statusLabel('needs_description')).toBe('Needs a description')
     expect(statusLabel('something_else')).toBe('Unknown')
   })
 
