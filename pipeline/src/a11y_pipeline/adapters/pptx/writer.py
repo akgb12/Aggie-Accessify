@@ -142,7 +142,7 @@ def _collect_edits(
 
     for element in ir.elements.values():
         part = str(element.attrs.get("part", ""))
-        if element.semantic_type == "figure" and element.attrs.get("mark_decorative"):
+        if element.semantic_type == "figure" and _decorative_now(element):
             slide(part).decorative.add(int(element.attrs["shape_id"]))
             operation(
                 "mark_shapes_decorative", part, element.id, shape_ids=[element.attrs["shape_id"]]
@@ -197,6 +197,19 @@ def _collect_edits(
             slide(part).move_first = int(title.attrs["shape_id"])
             operation("move_title_first", part, title.id, shape_id=title.attrs["shape_id"])
     return edits, operations, issues
+
+
+def _decorative_now(element: Element) -> bool:
+    # A flat group of lines, or a picture the describer judged to carry no information. A
+    # picture the author described keeps the author's text.
+    if element.attrs.get("mark_decorative"):
+        return True
+    accessibility = element.accessibility
+    return (
+        accessibility.decorative_suggested
+        and not accessibility.locked
+        and accessibility.status == "model_generated"
+    )
 
 
 def _alt_missing(element: Element) -> Issue:

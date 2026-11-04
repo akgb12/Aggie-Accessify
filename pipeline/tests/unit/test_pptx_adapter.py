@@ -255,3 +255,22 @@ def test_a_full_run_returns_an_updated_deck(deck_root: Path, tmp_path: Path) -> 
     assert completed.stats.fidelity.value == 100.0
     manifest = (completed.folder.manifest_path).read_text(encoding="utf-8")
     assert "output/updated.pptx" in manifest
+
+
+def test_a_picture_the_describer_judges_decorative_is_marked_decorative(
+    deck_root: Path, tmp_path: Path
+) -> None:
+    bundle, adapter, ir = _ir(deck_root)
+    figure = ir.elements["slide_01/figure_01"]
+    figure.accessibility.alt_text = "A plain red border"
+    figure.accessibility.decorative_suggested = True
+    figure.accessibility.status = "model_generated"
+    written = adapter.write_back(
+        bundle, ir, tmp_path / "out", tmp_path / "changes.diff", tmp_path / "v", None, 60
+    )
+    reread = Presentation(str(written.project_root / "deck.pptx"))
+    shape = next(s for s in reread.slides[0].shapes if s.shape_id == figure.attrs["shape_id"])
+    properties = shape._element.xpath("./p:nvPicPr/p:cNvPr")[0]
+    assert properties.get("descr") is None
+    assert properties.xpath(f".//a:ext[@uri='{DECORATIVE_URI}']")
+    assert written.pixel_check.identical
