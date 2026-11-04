@@ -213,6 +213,14 @@ def _change_note(element: dict[str, Any], title_moved: bool) -> str | None:
         )
     if title_moved:
         return "Moved to the start of the reading order, so it is read first."
+    accessibility = element.get("accessibility", {})
+    # Only the PowerPoint writer acts on this; its shapes live in slide XML parts
+    in_deck = str((element.get("source") or {}).get("file", "")).endswith(".xml")
+    if in_deck and accessibility.get("decorative_suggested") and not accessibility.get("locked"):
+        return (
+            "Marked decorative: judged to carry no information, so screen readers skip it. "
+            "The description it would have had is shown below."
+        )
     if attrs.get("mark_decorative"):
         return "Marked decorative: it is a set of straight lines with nothing to describe."
     if attrs.get("header_row_added"):
