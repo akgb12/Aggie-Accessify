@@ -137,10 +137,10 @@ export default function ElementList({
         )}
         {groups.map((group) => (
           <section key={group.id} className="mb-2">
-            <h3 className="sticky top-0 z-10 truncate bg-white px-2 py-1 text-xs font-semibold text-slate-500">
+            <h2 className="sticky top-0 z-10 truncate bg-white px-2 py-1 text-xs font-semibold text-slate-700">
               {containerLabel(group.id)}
               {group.title && <span className="ml-1 font-normal text-slate-400">· {group.title}</span>}
-            </h3>
+            </h2>
             <ul>
               {group.elements.map((element) => {
                 const label = elementLabel(element)

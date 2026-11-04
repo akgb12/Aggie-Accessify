@@ -119,9 +119,9 @@ export default function EditorMain({ project, targets, file, run, loadError, onS
     <Centered>
       <div className="space-y-5 rounded-lg border border-slate-200 bg-white p-6">
         <div>
-          <h1 className="truncate text-xl font-semibold text-slate-900" title={file}>
+          <h2 className="truncate text-xl font-semibold text-slate-900" title={file}>
             {file.split('/').pop()}
-          </h1>
+          </h2>
           <p className="mt-1 text-sm text-slate-600">
             {run ? (
               <span className="inline-flex items-center gap-2">

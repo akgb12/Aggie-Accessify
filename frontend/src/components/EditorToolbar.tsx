@@ -53,6 +53,7 @@ export default function EditorToolbar({
       <PanelToggle label="Show or hide the side panel" pressed={leftOpen} onClick={onToggleLeft}>
         <PanelLeft aria-hidden className="h-4 w-4" />
       </PanelToggle>
+      <h1 className="sr-only">{file ? fileName(file) : (projectName ?? 'Project')}</h1>
       <nav aria-label="Breadcrumb" className="min-w-0">
         <ol className="flex min-w-0 items-center gap-1.5 text-sm">
           <li className="shrink-0">
