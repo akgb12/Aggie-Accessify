@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/kit/tabs'
 import type { ReviewElement, ReviewIssue } from '../types'
-import { cx } from './classes'
 import IssueList from './IssueList'
 
 export type SidebarTab = 'elements' | 'issues' | 'pages' | 'files'
@@ -18,6 +18,9 @@ interface Props {
 
 const SEVERITY_ORDER = ['veto', 'error', 'warning', 'info']
 
+const TAB_CLASS =
+  'h-full flex-1 rounded-none border-0 border-b-2 border-transparent px-1 text-sm font-semibold text-slate-600 shadow-none hover:text-slate-900 data-[state=active]:border-brand-800 data-[state=active]:text-slate-900 data-[state=active]:shadow-none'
+
 export default function ReviewSidebar({
   elements,
   pages,
@@ -33,40 +36,38 @@ export default function ReviewSidebar({
     return all.sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity))
   }, [review])
 
-  const tabs: { id: SidebarTab; label: string; count?: number }[] = [
-    { id: 'elements', label: 'Slides' },
-    { id: 'issues', label: 'Issues', count: issues.length },
-    { id: 'pages', label: 'Pages' },
-    { id: 'files', label: 'Files' },
-  ]
-
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div role="tablist" aria-label="Sidebar" className="flex shrink-0 border-b border-slate-200">
-        {tabs.map((item) => (
-          <button
-            key={item.id}
-            role="tab"
-            aria-selected={tab === item.id}
-            onClick={() => setTab(item.id)}
-            className={cx(
-              'flex-1 whitespace-nowrap border-b-2 px-1.5 py-2 text-[13px] font-medium',
-              tab === item.id ? 'border-brand-700 text-brand-800' : 'border-transparent text-slate-500 hover:text-slate-800',
-            )}
-          >
-            {item.label}
-            {item.count !== undefined && (
-              <span className="ml-1 rounded-full bg-slate-100 px-1.5 text-[11px] text-slate-600">{item.count}</span>
-            )}
-          </button>
-        ))}
-      </div>
-      <div className="min-h-0 flex-1">
-        {tab === 'elements' && elements}
-        {tab === 'issues' && <IssueList issues={issues} elementsById={elementsById} slideTitles={slideTitles} onOpen={onOpenIssue} />}
-        {tab === 'pages' && pages}
-        {tab === 'files' && files}
-      </div>
-    </div>
+    <Tabs value={tab} onValueChange={(next) => setTab(next as SidebarTab)} className="flex h-full min-h-0 flex-col gap-0">
+      <TabsList
+        aria-label="Side panel"
+        className="h-11 w-full shrink-0 rounded-none border-b border-slate-200 bg-white p-0"
+      >
+        <TabsTrigger value="elements" className={TAB_CLASS}>
+          Slides
+        </TabsTrigger>
+        <TabsTrigger value="issues" className={TAB_CLASS}>
+          Issues
+          <span className="rounded-md bg-slate-100 px-1.5 text-xs tabular-nums text-slate-800">{issues.length}</span>
+        </TabsTrigger>
+        <TabsTrigger value="pages" className={TAB_CLASS}>
+          Pages
+        </TabsTrigger>
+        <TabsTrigger value="files" className={TAB_CLASS}>
+          Files
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="elements" className="min-h-0">
+        {elements}
+      </TabsContent>
+      <TabsContent value="issues" className="min-h-0">
+        <IssueList issues={issues} elementsById={elementsById} slideTitles={slideTitles} onOpen={onOpenIssue} />
+      </TabsContent>
+      <TabsContent value="pages" className="min-h-0">
+        {pages}
+      </TabsContent>
+      <TabsContent value="files" className="min-h-0">
+        {files}
+      </TabsContent>
+    </Tabs>
   )
 }
