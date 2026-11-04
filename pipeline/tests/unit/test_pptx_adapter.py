@@ -107,9 +107,9 @@ def test_the_parser_reads_slides_titles_and_figures(deck_root: Path) -> None:
     assert group.subtype == "diagram"
     assert group.attrs["labels"] == ["Input", "Output"]
     assert ir.elements["slide_03/table_01"].attrs["first_row_header"] is True
-    assert any(
-        issue.code == "slide_missing_title" and issue.details["slide"] == 4 for issue in ir.issues
-    )
+    # The untitled slide gets an empty title for the model to propose
+    untitled = ir.elements[ir.containers[3].title_element_id]
+    assert untitled.attrs["added_title"] and untitled.accessibility.status == "needs_description"
 
 
 def test_geometry_uses_a_bottom_left_origin_in_points(deck_root: Path) -> None:
@@ -189,9 +189,9 @@ def test_write_back_sets_alt_text_and_changes_nothing_else(deck_root: Path, tmp_
     # The slide that got a description, and the empty document title filled from slide 1
     assert changed == ["docProps/core.xml", "ppt/slides/slide1.xml"]
     assert "A red rectangle" in (tmp_path / "changes.diff").read_text(encoding="utf-8")
-    # The undescribed diagram is reported; nothing that was described failed to save
+    # The undescribed diagram and the untitled slide are reported; nothing failed to save
     codes = {issue.code for issue in written.issues}
-    assert codes == {"alt_missing"}
+    assert codes == {"alt_missing", "slide_missing_title"}
 
 
 def test_an_empty_document_title_is_filled_from_the_first_slide(

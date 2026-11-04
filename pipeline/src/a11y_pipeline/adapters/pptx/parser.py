@@ -11,6 +11,14 @@ from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
 from pptx.shapes.base import BaseShape
 
+from a11y_pipeline.adapters.pptx.structure import (
+    Box,
+    BoxKind,
+    analyze_layout,
+    guess_language,
+    table_has_header_row,
+    title_can_move_first,
+)
 from a11y_pipeline.bundle.bundle import Bundle
 from a11y_pipeline.ir.ids import IdAllocator, container_id, fingerprint_source
 from a11y_pipeline.ir.models import (
@@ -65,51 +73,51 @@ def parse(bundle: Bundle) -> DocumentIR:
     assets: dict[str, Asset] = {}
     issues: list[Issue] = []
     allocator = IdAllocator()
-    titles: list[str] = []
+    texts: list[str] = []
     for number, slide in enumerate(presentation.slides, start=1):
         cid = container_id(number)
         part_name = str(slide.part.partname).lstrip("/")
         geometry = _Geometry(slide_width, slide_height)
         container = Container(id=cid, kind="slide", rendered_pages=[number])
-        title_text = ""
-        drawing_ids: list[int] = []
+        boxes: list[Box] = []
+        shapes: dict[int, BaseShape] = {}
         for z_index, shape in enumerate(slide.shapes):
             if _hidden(shape):
                 continue
+            shapes[shape.shape_id] = shape
             element = _element_for(shape, cid, number, part_name, z_index, allocator, geometry)
+            boxes.append(_box(shape, z_index, element, geometry))
             if element is None:
-                if shape.shape_type in DRAWING_TYPES:
-                    drawing_ids.append(shape.shape_id)
                 continue
+            _decorate_flat_group(element)
             elements[element.id] = element
             container.element_ids.append(element.id)
             if element.accessibility.role == "H1" and container.title_element_id is None:
                 container.title_element_id = element.id
-                title_text = str(element.content.get("text", "")).strip()
+            if element.content.get("text"):
+                texts.append(str(element.content["text"]))
             media = element.attrs.get("media")
             if isinstance(media, str):
                 asset = assets.setdefault(media, _asset(media, element.attrs["media_sha256"]))
                 asset.used_by.append(element.id)
-        if _is_ungrouped_diagram(slide, drawing_ids):
-            issues.append(_ungrouped_diagram_issue(cid, number, len(drawing_ids)))
-        if not title_text:
-            issues.append(
-                Issue(
-                    element_id=None,
-                    code="slide_missing_title",
-                    severity="warning",
-                    message=f"Slide {number} has no title, so screen-reader users cannot find it.",
-                    details={"slide": number},
-                )
-            )
-        titles.append(title_text)
+        slide_context = _SlideContext(
+            cid, number, part_name, container, boxes, shapes, elements, allocator, geometry
+        )
+        _add_diagrams_and_decoration(slide_context)
+        _order_title_first(slide_context, issues)
+        if container.title_element_id is None:
+            _add_title_to_write(slide_context)
+        _sort_reading_order(container, elements)
         containers.append(container)
+    issues.extend(_duplicate_title_issues(containers, elements))
     core = presentation.core_properties
     metadata = {
         "title": (core.title or "").strip(),
         "language": (core.language or "").strip(),
         "slide_count": str(len(containers)),
     }
+    if not metadata["language"]:
+        metadata["language_proposed"] = guess_language(texts) or ""
     return DocumentIR(
         document_id=hashlib.sha256(deck.read_bytes()).hexdigest()[:16],
         source_format="pptx",
@@ -129,14 +137,28 @@ class _Geometry:
         self.height = height
 
     def bbox(self, shape: BaseShape) -> tuple[float, float, float, float] | None:
+        top_left = self.top_left(shape)
+        return None if top_left is None else self.from_top_left(top_left)
+
+    def top_left(self, shape: BaseShape) -> tuple[float, float, float, float] | None:
+        # The shape's box in points as PowerPoint stores it, measured from the top-left corner.
+        # Lines can have zero width or height, which still counts as a box.
         left, top, width, height = shape.left, shape.top, shape.width, shape.height
-        if None in (left, top, width, height) or not width or not height:
+        if None in (left, top, width, height) or (not width and not height):
             return None
-        x0 = left / EMU_PER_POINT
-        x1 = (left + width) / EMU_PER_POINT
-        y1 = (self.height - top) / EMU_PER_POINT
-        y0 = (self.height - top - height) / EMU_PER_POINT
-        return (x0, y0, x1, y1)
+        return (
+            left / EMU_PER_POINT,
+            top / EMU_PER_POINT,
+            (left + width) / EMU_PER_POINT,
+            (top + height) / EMU_PER_POINT,
+        )
+
+    def from_top_left(
+        self, box: tuple[float, float, float, float]
+    ) -> tuple[float, float, float, float]:
+        # Flip a top-left box to the bottom-left origin the rest of the pipeline uses
+        height = self.height / EMU_PER_POINT
+        return (box[0], height - box[3], box[2], height - box[1])
 
 
 def _hidden(shape: BaseShape) -> bool:
@@ -197,6 +219,9 @@ def _element_for(
         fingerprint_text += "|" + "|".join(labels) + str(attrs.get("media_sha256", ""))
     elif semantic in {"heading", "paragraph"}:
         content["text"] = text
+        sizes = [int(value) / 100 for value in shape._element.xpath(".//a:rPr/@sz")]
+        if sizes:
+            attrs["font_points"] = min(sizes)
         if semantic == "heading":
             accessibility = Accessibility(role="H1")
     elif semantic == "table":
@@ -204,6 +229,10 @@ def _element_for(
         content["rows"] = rows
         content["text"] = " | ".join(" ".join(row) for row in rows)
         attrs["first_row_header"] = bool(shape._element.xpath(".//a:tblPr/@firstRow") == ["1"])
+        if not attrs["first_row_header"] and table_has_header_row(rows):
+            # Turn on PowerPoint's "Header Row" so screen readers announce column names
+            attrs["first_row_header"] = True
+            attrs["header_row_added"] = True
         accessibility = Accessibility(
             status="done" if attrs["first_row_header"] else "needs_review"
         )
@@ -239,7 +268,8 @@ def _classify(shape: BaseShape) -> tuple[Any, str | None] | None:
     if shape.is_placeholder:
         placeholder = shape.placeholder_format.type
         if placeholder in TITLE_PLACEHOLDERS:
-            return ("heading", None)
+            # An empty title box shows nothing when presented and names nothing
+            return ("heading", None) if _shape_text(shape) else None
         if placeholder == PP_PLACEHOLDER.PICTURE and shape.shape_type == MSO_SHAPE_TYPE.PLACEHOLDER:
             return ("figure", "image") if _has_picture(shape) else None
     kind = shape.shape_type
@@ -351,21 +381,288 @@ def picture_png(blob: bytes) -> bytes | None:
         return None
 
 
-def _is_ungrouped_diagram(slide: Any, drawing_ids: list[int]) -> bool:
-    return len(drawing_ids) >= 4
+def _duplicate_title_issues(
+    containers: list[Container], elements: dict[str, Element]
+) -> list[Issue]:
+    # Screen-reader users jump between slides by title, so repeated titles look like one slide.
+    # Changing a visible title is the author's call, so this is reported, not fixed.
+    by_title: dict[str, list[int]] = {}
+    for number, container in enumerate(containers, start=1):
+        if container.title_element_id is None:
+            continue
+        text = " ".join(str(elements[container.title_element_id].content.get("text", "")).split())
+        if text:
+            by_title.setdefault(text.casefold(), []).append(number)
+    issues: list[Issue] = []
+    for slides in by_title.values():
+        if len(slides) < 2:
+            continue
+        listed = ", ".join(str(slide) for slide in slides)
+        for slide in slides:
+            issues.append(
+                Issue(
+                    element_id=containers[slide - 1].title_element_id,
+                    code="duplicate_title",
+                    severity="warning",
+                    message=(
+                        f"Slides {listed} share this title, so in a slide list they look the same. "
+                        'Add a word that tells them apart, such as "(continued)" or the example '
+                        "shown."
+                    ),
+                    details={"slides": slides},
+                )
+            )
+    return issues
 
 
-def _ungrouped_diagram_issue(cid: str, number: int, count: int) -> Issue:
-    return Issue(
-        element_id=None,
-        code="ungrouped_diagram",
-        severity="warning",
-        message=(
-            f"Slide {number} draws a diagram from {count} separate shapes. Select them and group "
-            "them (Ctrl+G) so one description can cover the whole diagram."
+def _decorate_flat_group(element: Element) -> None:
+    # A group with no height or no width is a set of straight lines, such as a divider. It
+    # carries no information a description could give, so it is marked decorative.
+    bbox = element.render.bbox
+    if element.subtype != "diagram" or bbox is None or element.accessibility.locked:
+        return
+    if bbox[2] - bbox[0] > 0 and bbox[3] - bbox[1] > 0:
+        return
+    element.accessibility = Accessibility(decorative=True, status="done")
+    element.attrs["mark_decorative"] = True
+
+
+@dataclass
+class _SlideContext:
+    cid: str
+    number: int
+    part_name: str
+    container: Container
+    boxes: list[Box]
+    shapes: dict[int, BaseShape]
+    elements: dict[str, Element]
+    allocator: IdAllocator
+    geometry: "_Geometry"
+
+
+def _box(shape: BaseShape, z_index: int, element: Element | None, geometry: "_Geometry") -> Box:
+    # Where a shape sits and what kind of thing it is, for layout reasoning
+    kind: BoxKind = "other"
+    if element is not None:
+        if element.semantic_type == "heading":
+            kind = "title"
+        elif element.semantic_type == "table":
+            kind = "table"
+        elif element.semantic_type == "paragraph":
+            kind = "body" if shape.is_placeholder else "label"
+        elif element.subtype == "image":
+            kind = "picture"
+        elif element.subtype == "diagram" and not element.accessibility.locked:
+            # A group the author described or marked decorative stays as it is
+            kind = "group" if not element.accessibility.decorative else "other"
+    elif etree.QName(shape._element).localname in {"sp", "cxnSp"} and not shape.is_placeholder:
+        kind = "drawing"
+    text = str(element.content.get("text", "")) if element is not None else ""
+    return Box(shape.shape_id, z_index, kind, geometry.top_left(shape), text)
+
+
+def _add_diagrams_and_decoration(slide: _SlideContext) -> None:
+    # Loose drawn shapes that touch become one described diagram; lone ones are decoration
+    layout = analyze_layout(slide.boxes)
+    for cluster in layout.diagrams:
+        element = _diagram_element(slide, cluster)
+        if element is not None:
+            slide.elements[element.id] = element
+            slide.container.element_ids.append(element.id)
+    decorative: list[int] = []
+    for box in layout.decorative:
+        description, already = _alt_state(slide.shapes[box.shape_id])
+        if not already and not description:
+            decorative.append(box.shape_id)
+    slide.container.attrs["decorative_shape_ids"] = decorative
+
+
+def _diagram_element(slide: _SlideContext, cluster: list[Box]) -> Element | None:
+    # One figure for a diagram drawn from loose shapes. Its description is stored on one of
+    # its drawn shapes (the carrier) and the other drawn shapes are marked decorative, so a
+    # screen reader announces the diagram once. Text labels stay readable.
+    groups = [box for box in cluster if box.kind == "group"]
+    drawings = [box for box in cluster if box.kind == "drawing"] + groups
+    states = {box.shape_id: _alt_state(slide.shapes[box.shape_id]) for box in drawings}
+    open_drawings = [box for box in drawings if not states[box.shape_id][1]]
+    if not open_drawings:
+        return None
+    described = [
+        box
+        for box in open_drawings
+        if states[box.shape_id][0] and not is_junk_alt(states[box.shape_id][0])
+    ]
+    carrier = described[0] if described else open_drawings[0]
+    existing = states[carrier.shape_id][0]
+    labels = _cluster_labels(cluster)
+    # Groups joined into this diagram are no longer figures of their own
+    for group in groups:
+        absorbed = _element_for_shape_id(slide, group.shape_id)
+        if absorbed is None:
+            continue
+        for label in absorbed.attrs.get("labels", []):
+            if label not in labels:
+                labels.append(label)
+        del slide.elements[absorbed.id]
+        slide.container.element_ids.remove(absorbed.id)
+    shape = slide.shapes[carrier.shape_id]
+    attrs: dict[str, Any] = {
+        "shape_id": carrier.shape_id,
+        "shape_name": shape.name,
+        "part": slide.part_name,
+        "z_index": carrier.z,
+        "cluster_shape_ids": [box.shape_id for box in cluster],
+        "decorative_shape_ids": [
+            box.shape_id
+            for box in open_drawings
+            if box is not carrier and not states[box.shape_id][0]
+        ],
+        "existing_alt": existing,
+    }
+    if labels:
+        attrs["labels"] = labels
+    accessibility = Accessibility(status="needs_description")
+    if described:
+        accessibility = Accessibility(alt_text=existing, status="done", locked=True)
+    element_id = slide.allocator.allocate(slide.cid, "figure")
+    ids = ",".join(str(box.shape_id) for box in cluster)
+    return Element(
+        id=element_id,
+        semantic_type="figure",
+        subtype="diagram",
+        attrs=attrs,
+        fingerprint=fingerprint_source(f"cluster|{ids}|{'|'.join(labels)}"),
+        source=SourceRef(
+            file=slide.part_name,
+            line_start=carrier.shape_id,
+            line_end=carrier.shape_id,
+            char_start=carrier.z,
+            char_end=carrier.z,
+            native_type="shape_cluster",
         ),
-        details={"slide": number, "container": cid, "shapes": count},
+        render=RenderRef(
+            pages=[slide.number],
+            bbox=slide.geometry.from_top_left(_union(cluster)),
+            mapping_method="geometry",
+            confidence=1.0,
+        ),
+        classification=Classification(
+            method="deterministic", confidence=0.8, evidence=["touching drawn shapes"]
+        ),
+        accessibility=accessibility,
     )
+
+
+def _element_for_shape_id(slide: _SlideContext, shape_id: int) -> Element | None:
+    for element_id in slide.container.element_ids:
+        element = slide.elements[element_id]
+        if element.attrs.get("shape_id") == shape_id:
+            return element
+    return None
+
+
+def _cluster_labels(cluster: list[Box]) -> list[str]:
+    # The words written on a diagram, top to bottom and left to right
+    labels: list[str] = []
+    placed = sorted(
+        (box for box in cluster if box.kind == "label" and box.bbox),
+        key=lambda box: (round(box.bbox[1]), box.bbox[0]) if box.bbox else (0, 0),
+    )
+    for box in placed:
+        for line in box.text.splitlines():
+            if line.strip() and line.strip() not in labels:
+                labels.append(line.strip())
+    return labels
+
+
+def _union(cluster: list[Box]) -> tuple[float, float, float, float]:
+    boxes = [box.bbox for box in cluster if box.bbox]
+    return (
+        min(box[0] for box in boxes),
+        min(box[1] for box in boxes),
+        max(box[2] for box in boxes),
+        max(box[3] for box in boxes),
+    )
+
+
+def _order_title_first(slide: _SlideContext, issues: list[Issue]) -> None:
+    # A screen reader reads shapes in stacking order, so the title must come first. Moving it
+    # is only done when no earlier shape overlaps it, which keeps the slide looking the same.
+    container = slide.container
+    if container.title_element_id is None:
+        return
+    title = slide.elements[container.title_element_id]
+    title_box = next(box for box in slide.boxes if box.shape_id == title.attrs["shape_id"])
+    skipped = set(container.attrs.get("decorative_shape_ids", []))
+    for element in slide.elements.values():
+        if element.id.startswith(f"{slide.cid}/"):
+            skipped.update(element.attrs.get("decorative_shape_ids", []))
+    readable_before = [
+        box
+        for box in slide.boxes
+        if box.z < title_box.z
+        and box.shape_id not in skipped
+        and not _alt_state(slide.shapes[box.shape_id])[1]
+    ]
+    if not readable_before:
+        container.attrs["title_first"] = True
+        return
+    if title_can_move_first(slide.boxes, title_box):
+        container.attrs["title_first"] = True
+        container.attrs["move_title_first"] = True
+        return
+    container.attrs["title_first"] = False
+    issues.append(
+        Issue(
+            element_id=title.id,
+            code="title_not_first",
+            severity="warning",
+            message=(
+                f"Slide {slide.number}'s title is not read first, and moving it automatically "
+                "would change how overlapping shapes are stacked. In PowerPoint, open "
+                "Arrange > Reading Order and drag the title to the top."
+            ),
+            details={"slide": slide.number},
+        )
+    )
+
+
+def _add_title_to_write(slide: _SlideContext) -> None:
+    # A slide without a title gets an empty title for the model to write. It is saved as a
+    # title placeholder placed just above the slide, as Microsoft suggests, so nothing moves.
+    element_id = slide.allocator.allocate(slide.cid, "heading")
+    slide.elements[element_id] = Element(
+        id=element_id,
+        semantic_type="heading",
+        content={"text": ""},
+        attrs={"part": slide.part_name, "z_index": -1, "added_title": True},
+        fingerprint=fingerprint_source(f"added-title|{slide.part_name}"),
+        source=SourceRef(
+            file=slide.part_name,
+            line_start=0,
+            line_end=0,
+            char_start=-1,
+            char_end=-1,
+            native_type="added_title",
+        ),
+        render=RenderRef(pages=[slide.number], mapping_method="geometry", confidence=1.0),
+        accessibility=Accessibility(role="H1", status="needs_description"),
+    )
+    slide.container.element_ids.insert(0, element_id)
+    slide.container.title_element_id = element_id
+    slide.container.attrs["title_first"] = True
+
+
+def _sort_reading_order(container: Container, elements: dict[str, Element]) -> None:
+    # Elements in the order a screen reader meets them in the updated deck
+    def position(element_id: str) -> tuple[int, int]:
+        element = elements[element_id]
+        is_title = element_id == container.title_element_id
+        if is_title and container.attrs.get("title_first"):
+            return (0, 0)
+        return (1, int(element.attrs.get("z_index", 0)))
+
+    container.element_ids.sort(key=position)
 
 
 def _asset(media: str, sha256: str) -> Asset:
