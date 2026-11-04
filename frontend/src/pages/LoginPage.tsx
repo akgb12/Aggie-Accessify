@@ -1,13 +1,40 @@
-import { Accessibility } from 'lucide-react'
+import { Info } from 'lucide-react'
 import { useState } from 'react'
-import { passwordProblem, usernameProblem } from '../account'
+import { MIN_PASSWORD_LENGTH, passwordProblem, usernameProblem } from '../account'
 import { useAuth } from '../authContext'
-import { cx } from '../components/classes'
 import { PasswordField, TextField } from '../components/fields'
 import { Alert, Button } from '../components/ui'
+import { Tabs, TabsList, TabsTrigger } from '@/components/kit/tabs'
 import { errorMessage } from '../errors'
+import { useDocumentTitle } from '../hooks'
 
 type Mode = 'signin' | 'register'
+type Field = 'firstName' | 'lastName' | 'username' | 'password' | 'confirm'
+type Problems = Partial<Record<Field, string>>
+
+const MISMATCH = 'The two passwords do not match.'
+
+function findProblems(
+  mode: Mode,
+  values: { firstName: string; lastName: string; username: string; password: string; confirm: string },
+): Problems {
+  const problems: Problems = {}
+  if (!values.username.trim()) problems.username = 'Enter your TAMU username.'
+  if (!values.password) problems.password = 'Enter your password.'
+  if (mode === 'signin') return problems
+  if (!values.firstName.trim()) problems.firstName = 'Enter your first name.'
+  if (!values.lastName.trim()) problems.lastName = 'Enter your last name.'
+  if (values.username.trim()) {
+    const username = usernameProblem(values.username)
+    if (username) problems.username = username
+  }
+  if (values.password) {
+    const password = passwordProblem(values.password, values.confirm)
+    if (password === MISMATCH) problems.confirm = password
+    else if (password) problems.password = password
+  }
+  return problems
+}
 
 export default function LoginPage() {
   const { signIn, register } = useAuth()
@@ -17,12 +44,15 @@ export default function LoginPage() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
+  const [problems, setProblems] = useState<Problems>({})
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  useDocumentTitle(mode === 'signin' ? 'Sign in' : 'Create an account')
 
-  function switchMode(next: Mode) {
-    setMode(next)
+  function switchMode(next: string) {
+    setMode(next as Mode)
     setError(null)
+    setProblems({})
     setPassword('')
     setConfirm('')
   }
@@ -30,16 +60,9 @@ export default function LoginPage() {
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     setError(null)
-    if (mode === 'register') {
-      const problem =
-        usernameProblem(username) ??
-        (!firstName.trim() || !lastName.trim() ? 'Enter your first and last name.' : null) ??
-        passwordProblem(password, confirm)
-      if (problem) {
-        setError(problem)
-        return
-      }
-    }
+    const found = findProblems(mode, { firstName, lastName, username, password, confirm })
+    setProblems(found)
+    if (Object.keys(found).length > 0) return
     setBusy(true)
     try {
       if (mode === 'signin') {
@@ -60,52 +83,37 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-full items-center justify-center px-4 py-10">
-      <div className="w-full max-w-md">
-        <div className="mb-6 flex flex-col items-center text-center">
-          <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-800 text-white">
-            <Accessibility aria-hidden className="h-6 w-6" />
-          </span>
-          <h1 className="mt-4 text-2xl font-bold tracking-tight">
-            {mode === 'signin' ? 'Welcome back' : 'Create your account'}
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Make your slides accessible. Sign in with your TAMU username.
-          </p>
-        </div>
+    <div className="min-h-full bg-slate-50 px-4 py-12 sm:py-16">
+      <div className="mx-auto w-full max-w-md">
+        <h1 className="font-display-caps text-3xl text-slate-900">
+          {mode === 'signin' ? 'Sign in' : 'Create an account'}
+        </h1>
+        <p className="mt-2 text-base text-slate-600">
+          Aggie Accessify makes your course slides accessible. It describes figures, fixes titles and reading
+          order, and gives you back the same deck.
+        </p>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div
-            role="group"
-            aria-label="Sign in or create an account"
-            className="mb-5 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1 text-sm font-medium"
-          >
-            {(['signin', 'register'] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={mode === value}
-                onClick={() => switchMode(value)}
-                className={cx(
-                  'rounded-md px-3 py-1.5',
-                  mode === value
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-800',
-                )}
-              >
-                {value === 'signin' ? 'Sign in' : 'Create account'}
-              </button>
-            ))}
-          </div>
+        <div className="mt-8 rounded-lg border border-slate-200 bg-white p-6 sm:p-8">
+          <Tabs value={mode} onValueChange={switchMode} className="mb-6">
+            <TabsList aria-label="Sign in or create an account" className="h-10 w-full rounded-md p-1">
+              <TabsTrigger value="signin" className="rounded-sm font-semibold text-slate-600 data-[state=active]:text-slate-900 data-[state=active]:shadow-none data-[state=active]:ring-1 data-[state=active]:ring-slate-300">
+                Sign in
+              </TabsTrigger>
+              <TabsTrigger value="register" className="rounded-sm font-semibold text-slate-600 data-[state=active]:text-slate-900 data-[state=active]:shadow-none data-[state=active]:ring-1 data-[state=active]:ring-slate-300">
+                Create account
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
 
-          <form onSubmit={submit} className="space-y-4" noValidate>
+          <form onSubmit={submit} className="space-y-5" noValidate>
             {mode === 'register' && (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-5 sm:grid-cols-2">
                 <TextField
                   label="First name"
                   value={firstName}
                   onChange={(event) => setFirstName(event.target.value)}
                   autoComplete="given-name"
+                  error={problems.firstName}
                   required
                 />
                 <TextField
@@ -113,6 +121,7 @@ export default function LoginPage() {
                   value={lastName}
                   onChange={(event) => setLastName(event.target.value)}
                   autoComplete="family-name"
+                  error={problems.lastName}
                   required
                 />
               </div>
@@ -124,6 +133,7 @@ export default function LoginPage() {
               autoComplete="username"
               autoCapitalize="none"
               spellCheck={false}
+              error={problems.username}
               required
               autoFocus
             />
@@ -132,7 +142,8 @@ export default function LoginPage() {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-              hint={mode === 'register' ? 'At least 10 characters.' : undefined}
+              hint={mode === 'register' ? `At least ${MIN_PASSWORD_LENGTH} characters.` : undefined}
+              error={problems.password}
               required
             />
             {mode === 'register' && (
@@ -141,26 +152,23 @@ export default function LoginPage() {
                 value={confirm}
                 onChange={(event) => setConfirm(event.target.value)}
                 autoComplete="new-password"
+                error={problems.confirm}
                 required
               />
             )}
             {error && <Alert tone="danger">{error}</Alert>}
-            <Button
-              type="submit"
-              variant="primary"
-              className="w-full"
-              loading={busy}
-              disabled={!username || !password}
-            >
+            <Button type="submit" variant="primary" className="h-10 w-full text-base" loading={busy}>
               {mode === 'signin' ? 'Sign in' : 'Create account'}
             </Button>
           </form>
         </div>
 
-        <p className="mt-4 text-center text-xs text-slate-500">
-          This is a temporary sign-in. Texas A&amp;M single sign-on will replace it.
-          <br />
-          Do not reuse your NetID password here.
+        <p className="mt-6 flex gap-2 text-sm text-slate-600">
+          <Info aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Signing in with a password is temporary until Texas A&amp;M single sign on is connected. Do not reuse your NetID
+            password here.
+          </span>
         </p>
       </div>
     </div>
