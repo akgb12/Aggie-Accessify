@@ -1,21 +1,70 @@
+@import "@fontsource-variable/open-sans";
+@import "@fontsource/oswald/500.css";
 @import "tailwindcss";
+@import "tw-animate-css";
 
+/* Texas A&M brand values (marcomm.tamu.edu, Aggie UX). Every color here is from the TAMU web
+   palette; text colors keep at least 4.5:1 on white and control borders at least 3:1. */
 @theme {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
-    sans-serif;
+  --font-sans: "Open Sans Variable", "Open Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Oswald", "Open Sans Variable", ui-sans-serif, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  /* Aggie maroon scale */
-  --color-brand-50: #fbf4f4;
-  --color-brand-100: #f6e3e3;
-  --color-brand-200: #ecc3c3;
-  --color-brand-300: #dd9a9a;
-  --color-brand-400: #c76666;
-  --color-brand-500: #a83a3a;
-  --color-brand-600: #861f1f;
-  --color-brand-700: #670d0d;
+  /* Aggie Maroon, with the brand light and dark shades for hover and pressed states.
+     Tints are maroon mixed into white, for selected rows and highlights only. */
+  --color-brand-50: color-mix(in srgb, #500000 5%, white);
+  --color-brand-100: color-mix(in srgb, #500000 10%, white);
+  --color-brand-200: color-mix(in srgb, #500000 22%, white);
+  --color-brand-300: color-mix(in srgb, #500000 40%, white);
+  --color-brand-400: #732f2f;
+  --color-brand-500: #732f2f;
+  --color-brand-600: #500000;
+  --color-brand-700: #732f2f;
   --color-brand-800: #500000;
-  --color-brand-900: #380000;
+  --color-brand-900: #3c001c;
+
+  /* One neutral family: the TAMU grays, ordered so text classes stay readable.
+     300 is the control border (3.7:1), 400 the lightest text gray (4.95:1). */
+  --color-slate-50: #f6f6f6;
+  --color-slate-100: #eaeaea;
+  --color-slate-200: #d1d1d1;
+  --color-slate-300: #858585;
+  --color-slate-400: #707070;
+  --color-slate-500: #626262;
+  --color-slate-600: #535353;
+  --color-slate-700: #3e3e3e;
+  --color-slate-800: #202020;
+  --color-slate-900: #202020;
+
+  /* Status colors, used only with text or an icon */
+  --color-success: #166534;
+  --color-warning: #92400e;
+  --color-danger: #b91c1c;
+  --color-info: #1e40af;
+
+  --ease-brand: cubic-bezier(0.22, 1, 0.36, 1);
+  --default-transition-duration: 200ms;
+  --default-transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Names the ObsidianUI (shadcn) components use */
+  --color-background: #ffffff;
+  --color-foreground: #202020;
+  --color-card: #ffffff;
+  --color-card-foreground: #202020;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #202020;
+  --color-primary: #500000;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #f6f6f6;
+  --color-secondary-foreground: #202020;
+  --color-muted: #f6f6f6;
+  --color-muted-foreground: #626262;
+  --color-accent: #eaeaea;
+  --color-accent-foreground: #202020;
+  --color-destructive: #b91c1c;
+  --color-border: #d1d1d1;
+  --color-input: #858585;
+  --color-ring: #500000;
 }
 
 @layer base {
@@ -24,7 +73,17 @@
   }
 
   body {
-    @apply bg-slate-50 font-sans text-slate-900 antialiased;
+    @apply bg-white font-sans text-slate-900 antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
   }
 
   :focus-visible {
@@ -39,6 +98,14 @@
   }
 }
 
+/* The product name and a page's main heading: Oswald, capitals set by CSS, never typed */
+@utility font-display-caps {
+  font-family: var(--font-display);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+}
+
 @keyframes indeterminate {
   0% {
     transform: translateX(-100%);
@@ -48,14 +115,16 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .animate-spin,
-  .animate-pulse,
-  .animate-indeterminate {
-    animation: none !important;
-  }
+.animate-indeterminate {
+  animation: indeterminate 1.4s var(--ease-brand) infinite;
 }
 
-.animate-indeterminate {
-  animation: indeterminate 1.4s ease-in-out infinite;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
