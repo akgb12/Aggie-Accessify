@@ -430,7 +430,7 @@ def test_backend_code_follows_storage_rules() -> None:
 
 
 def _deck_bytes() -> bytes:
-    # A two-slide deck with one undescribed picture
+    # A three-slide deck with one undescribed picture and one slide without a title
     stream = io.BytesIO()
     picture = io.BytesIO()
     Image.new("RGB", (60, 40), "red").save(picture, format="PNG")
@@ -440,6 +440,8 @@ def _deck_bytes() -> bytes:
     slide.shapes.title.text = "Gradient descent"
     slide.shapes.add_picture(picture, Inches(1), Inches(2))
     presentation.slides.add_slide(presentation.slide_layouts[5]).shapes.title.text = "Summary"
+    untitled = presentation.slides.add_slide(presentation.slide_layouts[6])
+    untitled.shapes.add_textbox(Inches(1), Inches(2), Inches(4), Inches(1)).text = "Questions"
     presentation.save(stream)
     return stream.getvalue()
 
@@ -485,3 +487,7 @@ def test_powerpoint_run_returns_an_updated_deck(client: Client) -> None:
     updated = Presentation(io.BytesIO(b"".join(download.streaming_content)))
     picture = next(shape for shape in updated.slides[0].shapes if shape.shape_type == 13)
     assert picture._element.xpath("./p:nvPicPr/p:cNvPr")[0].get("descr")
+    # The untitled slide gets a proposed title, explained in the review
+    title = next(e for e in review["elements"] if e["id"] == "slide_03/heading_01")
+    assert title["text"] and "Proposed title" in title["note"]
+    assert updated.slides[2].shapes[0].text_frame.text == title["text"]

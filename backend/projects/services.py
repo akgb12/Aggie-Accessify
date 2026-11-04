@@ -154,6 +154,11 @@ def build_review(run: Run) -> dict[str, object]:
             issues_by_element.setdefault(element_id, []).append(issue)
         else:
             document_issues.append(issue)
+    moved_titles = {
+        container["title_element_id"]
+        for container in ir["containers"]
+        if container.get("attrs", {}).get("move_title_first")
+    }
     elements: list[dict[str, object]] = []
     for element_id, element in ir["elements"].items():
         render = element["render"]
@@ -175,6 +180,7 @@ def build_review(run: Run) -> dict[str, object]:
                 "source": _source_payload(element.get("source")),
                 "history": element.get("history", []),
                 "issues": issues_by_element.get(element_id, []),
+                "note": _change_note(element, element_id in moved_titles),
             }
         )
     history: list[dict[str, object]] = []
@@ -195,6 +201,29 @@ def build_review(run: Run) -> dict[str, object]:
         "round_history": history,
         "issues": document_issues,
     }
+
+
+def _change_note(element: dict[str, Any], title_moved: bool) -> str | None:
+    # What the update did to a PowerPoint shape besides its text, in plain words
+    attrs = element.get("attrs", {})
+    if attrs.get("added_title"):
+        return (
+            "Proposed title. It is saved as the slide's title just above the slide's top edge, "
+            "so screen readers find it and the slide looks the same."
+        )
+    if title_moved:
+        return "Moved to the start of the reading order, so it is read first."
+    if attrs.get("mark_decorative"):
+        return "Marked decorative: it is a set of straight lines with nothing to describe."
+    if attrs.get("header_row_added"):
+        return "The first row is now marked as a header row."
+    if (element.get("source") or {}).get("native_type") == "shape_cluster":
+        parts = len(attrs.get("cluster_shape_ids", []))
+        return (
+            f"A diagram drawn from {parts} separate shapes. Its description is stored on one "
+            "of them and the other drawn parts are marked decorative."
+        )
+    return None
 
 
 def _figure_image_url(run: Run, element: dict[str, Any]) -> str | None:
