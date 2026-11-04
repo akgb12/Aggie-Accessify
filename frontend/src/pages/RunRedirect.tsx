@@ -23,7 +23,7 @@ export default function RunRedirect() {
   return (
     <PageContainer>
       {error ? (
-        <Alert tone="danger" title="Could not load this translation">
+        <Alert tone="danger" title="This run could not be loaded">
           {error}
         </Alert>
       ) : (

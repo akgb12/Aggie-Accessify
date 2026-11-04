@@ -255,7 +255,7 @@ function DataControls({ onClose }: { onClose: () => void }) {
       <Section title="Data controls">
         <Row
           label="Delete all projects"
-          description="Removes every project, its files and all translations. Your account stays."
+          description="Removes every project, its files and all results. Your account stays."
         >
           <Button variant="danger" className="border border-red-300" onClick={() => setDialog('projects')}>
             Delete all
@@ -283,7 +283,7 @@ function DataControls({ onClose }: { onClose: () => void }) {
             navigate('/')
           }}
         >
-          Every project you own, with its uploaded files and translations, will be removed. This
+          Every project you own, with its uploaded files and results, will be removed. This
           cannot be undone.
         </ConfirmDialog>
       )}
@@ -300,7 +300,7 @@ function DataControls({ onClose }: { onClose: () => void }) {
             navigate('/')
           }}
         >
-          Your account, all of your projects and all of their translations will be permanently
+          Your account, all of your projects and all of their results will be permanently
           deleted. This cannot be undone.
         </ConfirmDialog>
       )}

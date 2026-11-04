@@ -175,7 +175,7 @@ export default function ProjectsPage() {
           onClose={() => setDeleting(null)}
           onConfirm={() => remove(deleting)}
         >
-          “{deleting.name}”, its uploaded files and every translation of them will be removed. This cannot be
+          “{deleting.name}”, its uploaded files and every accessible version made from them will be removed. This cannot be
           undone.
         </ConfirmDialog>
       )}
