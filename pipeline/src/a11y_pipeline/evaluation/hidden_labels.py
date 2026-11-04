@@ -121,7 +121,7 @@ def detect_hidden_labels(
         raise ValueError("Hidden label detection requires threshold 20")
     page_box = page_box_points(pdf_path, page)
     extracted = extract_word_boxes(pdf_path, page)
-    words = _words_inside_figure(extracted, figure_bbox, page_box)
+    words = words_inside_figure(extracted, figure_bbox, page_box)
     with tempfile.TemporaryDirectory(prefix="a11y-hidden-labels-") as temporary:
         rendered = Path(temporary) / "page.png"
         render_page(pdf_path, page, rendered, dpi)
@@ -154,7 +154,7 @@ def detect_hidden_labels(
     )
 
 
-def _words_inside_figure(
+def words_inside_figure(
     words: list[WordBox],
     figure_bbox: tuple[float, float, float, float],
     page_box: tuple[float, float, float, float],

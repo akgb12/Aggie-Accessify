@@ -9,13 +9,21 @@ from a11y_pipeline.adapters.context import figure_context
 from a11y_pipeline.adapters.pptx.parser import parse, picture_blobs, picture_png
 from a11y_pipeline.adapters.pptx.preflight import preflight
 from a11y_pipeline.adapters.pptx.render import render_deck_pdf
+from a11y_pipeline.adapters.pptx.structure import touches
 from a11y_pipeline.adapters.pptx.writer import verify_updated_deck, write_updated_project
 from a11y_pipeline.bundle.bundle import Bundle
 from a11y_pipeline.capabilities.base import FigureDescriptionInput
 from a11y_pipeline.evaluation.concepts import build_figure_concepts
 from a11y_pipeline.evaluation.contrast import LARGE_TEXT_POINTS, required_ratio, text_contrast
+from a11y_pipeline.evaluation.hidden_labels import (
+    HiddenLabelError,
+    WordBox,
+    extract_word_boxes,
+    words_inside_figure,
+)
 from a11y_pipeline.ir.models import DocumentIR, Issue
-from a11y_pipeline.render.crop import crop_pdf_bbox
+from a11y_pipeline.render.crop import crop_pdf_bbox, page_box_points
+from a11y_pipeline.render.ocr import ocr_words
 from a11y_pipeline.render.pages import page_size_points, render_page, render_pages
 from a11y_pipeline.render.pixeldiff import PixelCheck, compare_pdf_pixels
 
@@ -25,6 +33,10 @@ __all__ = ["PptxAdapter"]
 SLIDE_IMAGE_DPI = 60
 # Resolution for measuring text contrast; high enough that small text has solid glyph cores
 CONTRAST_DPI = 110
+# Words this close outside a figure's edge still show in its crop
+WORD_MARGIN_POINTS = 6.0
+# OCR that finds fewer words than this has probably missed the picture's text
+MIN_OCR_WORDS = 5
 
 
 class PptxAdapter:
@@ -64,6 +76,7 @@ class PptxAdapter:
             issues.extend(_keep_table_headers_unchanged(ir))
         else:
             issues.extend(_contrast_issues(ir, rendered, run_root / "work" / "contrast"))
+        drawn_words = _DrawnWords(rendered)
         for element in ir.elements.values():
             if element.semantic_type == "heading" and element.attrs.get("added_title"):
                 figure_inputs[element.id] = _title_input(
@@ -87,6 +100,14 @@ class PptxAdapter:
                 ir.issues.extend(concepts.issues)
             else:
                 ir.issues.extend(build_figure_concepts(element, nearby).issues)
+            drawn = list(labels) + drawn_words.inside(element)
+            if _contains_picture(ir, element):
+                read = ocr_words(image)
+                if read is not None and len(read) >= MIN_OCR_WORDS:
+                    drawn.extend(read)
+                else:
+                    # Text in the picture could not be read, so quotes of it cannot be checked
+                    element.attrs["text_unverifiable"] = True
             figure_inputs[element.id] = FigureDescriptionInput(
                 element_id=element.id,
                 subtype=element.subtype or "other",
@@ -95,7 +116,7 @@ class PptxAdapter:
                 visible_labels=labels if element.subtype == "diagram" else [],
                 slide_title=slide_title,
                 nearby_text=nearby,
-                rendered_text=labels if element.subtype == "diagram" else [],
+                rendered_text=drawn,
             )
         ir.issues.extend(issues)
         return PreparedDocument(
@@ -162,6 +183,47 @@ class PptxAdapter:
                 different_pages=sorted(changed),
             ),
         )
+
+
+class _DrawnWords:
+    # The words the renderer drew on each slide, read once per page with their positions
+    def __init__(self, rendered: Path | None) -> None:
+        self.rendered = rendered
+        self.pages: dict[int, tuple[list[WordBox], tuple[float, float, float, float]]] = {}
+
+    def inside(self, element: Any) -> list[str]:
+        # Words drawn inside a figure's area, a little beyond its edges as the crop shows
+        bbox = element.render.bbox
+        if self.rendered is None or bbox is None or not element.render.pages:
+            return []
+        page = element.render.pages[0]
+        if page not in self.pages:
+            try:
+                self.pages[page] = (
+                    extract_word_boxes(self.rendered, page),
+                    page_box_points(self.rendered, page),
+                )
+            except (HiddenLabelError, OSError, ValueError):
+                self.pages[page] = ([], (0.0, 0.0, 0.0, 0.0))
+        words, page_box = self.pages[page]
+        margin = WORD_MARGIN_POINTS
+        grown = (bbox[0] - margin, bbox[1] - margin, bbox[2] + margin, bbox[3] + margin)
+        return [word.text for word in words_inside_figure(words, grown, page_box)]
+
+
+def _contains_picture(ir: DocumentIR, element: Any) -> bool:
+    # A picture, a group holding one, or a diagram drawn over one
+    if element.attrs.get("contains_picture"):
+        return True
+    bbox = element.render.bbox
+    if bbox is None:
+        return False
+    for other in ir.elements.values():
+        if other.id == element.id or other.subtype != "image" or other.render.bbox is None:
+            continue
+        if other.render.pages == element.render.pages and touches(other.render.bbox, bbox):
+            return True
+    return False
 
 
 def _rendered_changes(deck: Path, original_pdf: Path, work: Path) -> set[int]:

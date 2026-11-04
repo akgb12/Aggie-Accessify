@@ -213,6 +213,8 @@ def _element_for(
     fingerprint_text = f"{semantic}|{subtype}|{shape.name}|{text}"
     if semantic == "figure":
         accessibility = _figure_accessibility(shape, attrs, subtype)
+        # Text inside a picture is only readable with OCR, which the checks need to know
+        attrs["contains_picture"] = subtype == "image" or bool(shape._element.xpath(".//p:pic"))
         labels = _figure_labels(shape)
         if labels:
             attrs["labels"] = labels
