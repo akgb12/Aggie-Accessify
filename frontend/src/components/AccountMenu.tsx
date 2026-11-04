@@ -1,5 +1,5 @@
 import { ChevronDown, LogOut, Settings } from 'lucide-react'
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fullName, initials } from '../account'
 import { useAuth, useUser } from '../authContext'
@@ -11,8 +11,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/kit/dropdown-menu'
-import SettingsDialog from './SettingsDialog'
 import type { SettingsTab } from './SettingsDialog'
+
+const SettingsDialog = lazy(() => import('./SettingsDialog'))
 
 // The signed-in person's menu: a Radix menu, so arrow keys, typeahead and focus return work
 export default function AccountMenu() {
@@ -53,7 +54,11 @@ export default function AccountMenu() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      {settings && <SettingsDialog initialTab={settings} onClose={() => setSettings(null)} />}
+      {settings && (
+        <Suspense fallback={null}>
+          <SettingsDialog initialTab={settings} onClose={() => setSettings(null)} />
+        </Suspense>
+      )}
     </>
   )
 }

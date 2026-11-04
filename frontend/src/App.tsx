@@ -1,15 +1,18 @@
+import { lazy, Suspense } from 'react'
 import { NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuth } from './authContext'
 import AccountMenu from './components/AccountMenu'
 import { ProductLink, UniversityBar } from './components/Brand'
 import { cx } from './components/classes'
 import { PageContainer, Skeleton } from './components/ui'
-import EditorPage from './pages/EditorPage'
 import LoginPage from './pages/LoginPage'
 import NotFoundPage from './pages/NotFoundPage'
 import ProjectPage from './pages/ProjectPage'
 import ProjectsPage from './pages/ProjectsPage'
 import RunRedirect from './pages/RunRedirect'
+
+// The editor is the largest page, so its code loads only when a project is opened
+const EditorPage = lazy(() => import('./pages/EditorPage'))
 
 function ProjectsNavLink() {
   // Projects stays current inside a project and its editor, since that is where they live
@@ -74,7 +77,21 @@ export default function App() {
               }
             />
             <Route path="/projects/:id" element={<ProjectPage />} />
-            <Route path="/projects/:id/editor" element={<EditorPage />} />
+            <Route
+              path="/projects/:id/editor"
+              element={
+                <Suspense
+                  fallback={
+                    <div className="space-y-4 p-6">
+                      <Skeleton className="h-10 w-72" />
+                      <Skeleton className="h-56" />
+                    </div>
+                  }
+                >
+                  <EditorPage />
+                </Suspense>
+              }
+            />
             <Route path="/runs/:id" element={<RunRedirect />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
