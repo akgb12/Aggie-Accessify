@@ -47,8 +47,8 @@ export default function ConfirmDialog({
 
   return (
     <Modal title={title} onClose={onClose}>
-      <form onSubmit={submit} className="space-y-4 px-5 pb-5 pt-3">
-        <div className="text-sm text-slate-600">{children}</div>
+      <form onSubmit={submit} className="space-y-5 px-6 pb-6 pt-4">
+        <div className="text-sm text-slate-700">{children}</div>
         {typeToConfirm && (
           <TextField
             label={`Type “${typeToConfirm}” to confirm`}

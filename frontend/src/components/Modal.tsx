@@ -36,19 +36,19 @@ export default function Modal({
         if (event.target === dialog.current) onClose()
       }}
       className={cx(
-        'm-auto w-[calc(100%-2rem)] rounded-xl border border-slate-200 bg-white p-0 text-slate-900 shadow-xl backdrop:bg-slate-900/40',
+        'm-auto w-[calc(100%-2rem)] rounded-lg border border-slate-200 bg-white p-0 text-slate-900 shadow-lg backdrop:bg-slate-900/50',
         className ?? 'max-w-md',
       )}
     >
-      <div className={cx('flex items-center justify-between gap-3', bare ? 'hidden' : 'px-5 pt-4')}>
-        <h2 id={titleId} className="text-base font-semibold">
+      <div className={cx('flex items-center justify-between gap-3', bare ? 'hidden' : 'px-6 pt-5')}>
+        <h2 id={titleId} className="text-lg font-semibold">
           {title}
         </h2>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          className="flex h-8 w-8 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 hover:text-slate-900"
         >
           <X aria-hidden className="h-4 w-4" />
         </button>
