@@ -6,12 +6,14 @@ import { api } from '../api'
 import { formatUsd, fullName, passwordProblem } from '../account'
 import { useAuth, useUser } from '../authContext'
 import { errorMessage } from '../errors'
-import type { DefaultEffort, Usage } from '../types'
+import type { Usage } from '../types'
 import { cx } from './classes'
 import ConfirmDialog from './ConfirmDialog'
 import Modal from './Modal'
 import { PasswordField, TextField } from './fields'
 import { Alert, Button, Skeleton } from './ui'
+import EffortPicker from './EffortPicker'
+import { Switch } from '@/components/kit/switch'
 
 export type SettingsTab = 'general' | 'account' | 'data' | 'usage'
 
@@ -22,11 +24,6 @@ const TABS: { id: SettingsTab; label: string; icon: ReactNode }[] = [
   { id: 'usage', label: 'Usage', icon: <Gauge aria-hidden className="h-4 w-4" /> },
 ]
 
-const EFFORTS: { value: DefaultEffort; label: string; hint: string }[] = [
-  { value: 'low', label: 'Low', hint: 'Quick pass' },
-  { value: 'medium', label: 'Medium', hint: 'Balanced' },
-  { value: 'high', label: 'High', hint: 'Most thorough' },
-]
 
 export default function SettingsDialog({
   initialTab,
@@ -43,7 +40,7 @@ export default function SettingsDialog({
           aria-label="Settings sections"
           className="flex shrink-0 gap-1 overflow-x-auto border-b border-slate-200 p-2 sm:w-52 sm:flex-col sm:border-b-0 sm:border-r"
         >
-          <p className="hidden px-2.5 pb-2 pt-1 text-base font-semibold sm:block">Settings</p>
+          <p className="hidden px-2.5 pb-2 pt-1 text-lg font-semibold sm:block">Settings</p>
           {TABS.map((item) => (
             <button
               key={item.id}
@@ -51,20 +48,20 @@ export default function SettingsDialog({
               aria-current={tab === item.id ? 'page' : undefined}
               onClick={() => setTab(item.id)}
               className={cx(
-                'flex shrink-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium',
+                'flex h-9 shrink-0 items-center gap-2.5 rounded-md px-2.5 text-sm font-semibold',
                 tab === item.id
                   ? 'bg-slate-100 text-slate-900'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',
+                  : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900',
               )}
             >
-              <span className="text-slate-400">{item.icon}</span>
+              <span className="text-slate-600">{item.icon}</span>
               {item.label}
             </button>
           ))}
           <button
             type="button"
             onClick={onClose}
-            className="ml-auto shrink-0 rounded-lg px-2.5 py-2 text-sm font-medium text-slate-500 hover:bg-slate-50 sm:ml-0 sm:mt-auto sm:text-left"
+            className="ml-auto h-9 shrink-0 rounded-md px-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 sm:ml-0 sm:mt-auto sm:text-left"
           >
             Close
           </button>
@@ -83,8 +80,8 @@ export default function SettingsDialog({
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="mb-6 last:mb-0">
-      <h3 className="text-lg font-semibold">{title}</h3>
-      <div className="mt-3 divide-y divide-slate-100">{children}</div>
+      <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
+      <div className="mt-2 divide-y divide-slate-200">{children}</div>
     </section>
   )
 }
@@ -101,8 +98,8 @@ function Row({
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 py-3">
       <div className="min-w-0 max-w-sm">
-        <p className="text-sm font-medium text-slate-900">{label}</p>
-        {description && <p className="mt-0.5 text-sm text-slate-500">{description}</p>}
+        <p className="text-sm font-semibold text-slate-900">{label}</p>
+        {description && <p className="mt-0.5 text-sm text-slate-600">{description}</p>}
       </div>
       {children}
     </div>
@@ -127,51 +124,24 @@ function General() {
   return (
     <>
       <Section title="General">
-        <Row label="Default effort" description="Used when you press Translate. You can still change it each time.">
-          <div role="radiogroup" aria-label="Default effort" className="flex gap-1.5">
-            {EFFORTS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                role="radio"
-                aria-checked={preferences.default_effort === option.value}
-                onClick={() => void save({ default_effort: option.value })}
-                title={option.hint}
-                className={cx(
-                  'rounded-lg border px-3 py-1.5 text-sm font-medium',
-                  preferences.default_effort === option.value
-                    ? 'border-brand-600 bg-brand-50 text-brand-800 ring-1 ring-brand-600'
-                    : 'border-slate-200 text-slate-700 hover:border-slate-300',
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </Row>
+        <div className="py-4">
+          <EffortPicker
+            label="Default effort"
+            value={preferences.default_effort}
+            onChange={(value) => void save({ default_effort: value })}
+          />
+          <p className="mt-2 text-sm text-slate-600">Used when you start a run. You can still change it each time.</p>
+        </div>
         <Row
           label="Show demo options"
-          description="Adds a field to Translate for forcing a weak first description, to watch the repair loop work."
+          description="Adds a field for giving a figure a weak first description, to show the repair loop during a demo."
         >
-          <button
-            type="button"
-            role="switch"
-            aria-checked={preferences.show_demo_options}
+          <Switch
             aria-label="Show demo options"
-            onClick={() => void save({ show_demo_options: !preferences.show_demo_options })}
-            className={cx(
-              'relative h-6 w-11 shrink-0 rounded-full transition-colors',
-              preferences.show_demo_options ? 'bg-brand-700' : 'bg-slate-300',
-            )}
-          >
-            <span
-              aria-hidden
-              className={cx(
-                'absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform',
-                preferences.show_demo_options && 'translate-x-5',
-              )}
-            />
-          </button>
+            checked={preferences.show_demo_options}
+            onCheckedChange={(checked) => void save({ show_demo_options: checked })}
+            className="h-6 w-11 data-[state=unchecked]:bg-slate-300 [&>span]:size-5"
+          />
         </Row>
       </Section>
       {error && <Alert tone="danger">{error}</Alert>}
@@ -248,14 +218,14 @@ function Account({ onClose }: { onClose: () => void }) {
             Save name
           </Button>
         </form>
-        <Row label="Log out" description={`Signed in as ${fullName(user)}.`}>
+        <Row label="Sign out" description={`Signed in as ${fullName(user)}.`}>
           <Button
             onClick={() => {
               onClose()
               void signOut().then(() => navigate('/'))
             }}
           >
-            Log out
+            Sign out
           </Button>
         </Row>
       </Section>
@@ -287,7 +257,7 @@ function DataControls({ onClose }: { onClose: () => void }) {
           label="Delete all projects"
           description="Removes every project, its files and all translations. Your account stays."
         >
-          <Button variant="danger" className="border border-red-200" onClick={() => setDialog('projects')}>
+          <Button variant="danger" className="border border-red-300" onClick={() => setDialog('projects')}>
             Delete all
           </Button>
         </Row>
@@ -352,10 +322,10 @@ function UsageTab() {
   const stats = usage
     ? [
         ['Projects', String(usage.projects)],
-        ['Translations', `${usage.succeeded_runs} of ${usage.runs} succeeded`],
+        ['Runs', `${usage.succeeded_runs} of ${usage.runs} finished`],
         ['Spend this month', formatUsd(usage.cost_usd_this_month)],
         ['Spend, all time', formatUsd(usage.cost_usd)],
-        ['Tokens in / out', `${usage.input_tokens.toLocaleString()} / ${usage.output_tokens.toLocaleString()}`],
+        ['Model use (tokens in / out)', `${usage.input_tokens.toLocaleString()} / ${usage.output_tokens.toLocaleString()}`],
       ]
     : []
 
@@ -367,13 +337,13 @@ function UsageTab() {
         <dl className="divide-y divide-slate-100">
           {stats.map(([label, value]) => (
             <div key={label} className="flex items-center justify-between py-3 text-sm">
-              <dt className="text-slate-600">{label}</dt>
-              <dd className="font-medium text-slate-900">{value}</dd>
+              <dt className="text-slate-700">{label}</dt>
+              <dd className="font-semibold tabular-nums text-slate-900">{value}</dd>
             </div>
           ))}
-          <div className="py-3 text-sm text-slate-500">
-            Credits: not enabled yet. Spend is tracked here so a university budget can be tied to
-            your account later.
+          <div className="py-3 text-sm text-slate-600">
+            Credits are not enabled yet. Spend is tracked here so a university budget can be tied to your
+            account later.
           </div>
         </dl>
       )}
