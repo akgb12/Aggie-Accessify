@@ -47,7 +47,7 @@ export default function PageThumbnails({
                 {page.number}
               </span>
               {flaggedPages.has(page.number) && (
-                <span aria-hidden className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-amber-500 ring-2 ring-white" />
+                <span aria-hidden className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-warning ring-2 ring-white" />
               )}
             </button>
           </li>

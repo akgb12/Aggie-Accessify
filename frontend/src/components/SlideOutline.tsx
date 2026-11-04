@@ -34,7 +34,7 @@ export default function SlideOutline({
             aria-label="Previous slide"
             disabled={slideNumber <= 1}
             onClick={() => onSlide(slideNumber - 1)}
-            className="rounded-md p-1.5 text-slate-500 hover:bg-slate-200 disabled:opacity-40"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-slate-700 hover:bg-slate-200 disabled:opacity-50"
           >
             <ChevronLeft aria-hidden className="h-4 w-4" />
           </button>
@@ -47,7 +47,7 @@ export default function SlideOutline({
             aria-label="Next slide"
             disabled={slideNumber >= slideCount}
             onClick={() => onSlide(slideNumber + 1)}
-            className="rounded-md p-1.5 text-slate-500 hover:bg-slate-200 disabled:opacity-40"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-slate-700 hover:bg-slate-200 disabled:opacity-50"
           >
             <ChevronRight aria-hidden className="h-4 w-4" />
           </button>
@@ -87,7 +87,7 @@ export default function SlideOutline({
                     <span className="mt-1 block text-sm font-medium text-slate-900">{label.title}</span>
                     {isFigure && (
                       <span className="mt-1 block text-sm text-slate-700">
-                        {element.alt ?? <em className="text-slate-400">No description yet</em>}
+                        {element.alt ?? <span className="text-slate-600">No description yet</span>}
                       </span>
                     )}
                   </span>

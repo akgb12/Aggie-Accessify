@@ -37,7 +37,7 @@ function IconButton({
       disabled={disabled}
       onClick={onClick}
       className={cx(
-        'rounded-md p-1.5 text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40',
+        'flex h-8 w-8 items-center justify-center rounded-md text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50',
       )}
     >
       {children}
@@ -62,7 +62,7 @@ export default function PageViewer({ pages, pageNumber, elements, selectedId, on
     return () => observer.disconnect()
   }, [])
 
-  if (!page) return <p className="p-6 text-sm text-slate-500">No pages were rendered for this run.</p>
+  if (!page) return <p className="p-6 text-sm text-slate-600">No slide pictures were made for this run.</p>
 
   // Fit the whole slide inside the pane, then apply the zoom on top
   const availableWidth = Math.max(0, size.width - PADDING * 2)
@@ -85,7 +85,7 @@ export default function PageViewer({ pages, pageNumber, elements, selectedId, on
         if (event.key === 'ArrowRight' && pageNumber < pages.length) onPage(pageNumber + 1)
       }}
     >
-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-2">
+      <div className="flex h-11 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-2">
         <div className="flex items-center gap-1">
           <IconButton label="Previous page" disabled={pageNumber <= 1} onClick={() => onPage(pageNumber - 1)}>
             <ChevronLeft aria-hidden className="h-4 w-4" />
@@ -100,7 +100,7 @@ export default function PageViewer({ pages, pageNumber, elements, selectedId, on
               onChange={(event) => setDraft(event.target.value)}
               onBlur={commitPage}
               onKeyDown={(event) => event.key === 'Enter' && commitPage()}
-              className="w-12 rounded-md border border-slate-300 px-1.5 py-0.5 text-center text-sm"
+              className="h-8 w-14 rounded-md border border-slate-300 px-1.5 text-center text-sm tabular-nums"
             />
             <span aria-hidden>/ {pages.length}</span>
           </label>
@@ -112,7 +112,7 @@ export default function PageViewer({ pages, pageNumber, elements, selectedId, on
           <IconButton label="Zoom out" disabled={zoom <= MIN_ZOOM} onClick={() => setZoom(Math.max(MIN_ZOOM, zoom / ZOOM_STEP))}>
             <ZoomOut aria-hidden className="h-4 w-4" />
           </IconButton>
-          <span className="w-12 text-center text-xs tabular-nums text-slate-500">
+          <span className="w-12 text-center text-sm tabular-nums text-slate-700">
             {zoom === 1 ? 'Fit' : `${Math.round(zoom * 100)}%`}
           </span>
           <IconButton label="Zoom in" disabled={zoom >= MAX_ZOOM} onClick={() => setZoom(Math.min(MAX_ZOOM, zoom * ZOOM_STEP))}>
