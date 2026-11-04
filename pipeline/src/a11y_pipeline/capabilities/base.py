@@ -20,12 +20,18 @@ class FigureDescriptionInput(BaseModel):
     previous_alt: str | None = None
     previous_extended: str | None = None
     problems: list[str] = []
+    # Titles of nearby slides, when the request is to propose a slide title
+    other_titles: list[str] = []
 
 
 class FigureDescriptionOutput(BaseModel):
     alt_text: str
     extended_description: str | None = None
     decorative: bool = False
+
+
+class SlideTitleOutput(BaseModel):
+    title: str
 
 
 @dataclass(frozen=True)
