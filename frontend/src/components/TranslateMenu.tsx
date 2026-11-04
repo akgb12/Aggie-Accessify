@@ -1,4 +1,4 @@
-import { Languages } from 'lucide-react'
+import { RotateCw } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { editorPath } from '../editorState'
@@ -15,6 +15,7 @@ interface Props {
   onStarted: (run: Run) => void
 }
 
+// Run the deck again from the review screen, or open an earlier run of it
 export default function TranslateMenu({ projectId, file, runs, onStarted }: Props) {
   const [open, setOpen] = useState(false)
   const earlier = runs
@@ -27,39 +28,36 @@ export default function TranslateMenu({ projectId, file, runs, onStarted }: Prop
       open={open}
       onOpenChange={setOpen}
       width="w-80"
-      label="Translate"
-      icon={<Languages aria-hidden className="h-4 w-4" />}
-      buttonClassName="bg-brand-800 text-white hover:bg-brand-700"
+      label="Run again"
+      icon={<RotateCw aria-hidden className="h-4 w-4" />}
+      buttonClassName="border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 data-[state=open]:bg-slate-100"
     >
-      <div className="space-y-3">
-        <p className="truncate font-mono text-sm font-medium text-slate-800" title={file}>
-          {file}
-        </p>
+      <div className="space-y-5">
         <TranslateForm
           projectId={projectId}
           file={file}
+          compact
           onStarted={(run) => {
             setOpen(false)
             onStarted(run)
           }}
         />
         {earlier.length > 0 && (
-          <div>
-            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400">Earlier translations</p>
-            <ul className="-mx-1">
+          <div className="border-t border-slate-200 pt-4">
+            <p className="mb-2 text-sm font-semibold text-slate-800">Earlier runs</p>
+            <ul className="-mx-2">
               {earlier.map((run) => (
                 <li key={run.id}>
                   <Link
                     to={editorPath(projectId, file, run.id)}
                     onClick={() => setOpen(false)}
-                    className="flex items-center justify-between gap-2 rounded-md px-1 py-1 text-sm hover:bg-slate-50"
+                    className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-slate-100"
                   >
                     <span className="flex items-center gap-2">
                       <RunStatusBadge status={run.status} />
-                      <span className="capitalize text-slate-500">{run.effort}</span>
+                      <span className="capitalize text-slate-700">{run.effort}</span>
                     </span>
-                    <span className="text-xs text-slate-400">
-                      {run.a_score !== null ? `A ${run.a_score.toFixed(0)} · ` : ''}
+                    <span className="text-slate-600">
                       {formatCost(run.cost_usd)} · {relativeTime(run.created_at)}
                     </span>
                   </Link>
