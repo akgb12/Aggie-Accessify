@@ -1,48 +1,54 @@
-import { ChevronRight, FolderOpen, Pencil, Plus, Trash2 } from 'lucide-react'
+import { EllipsisVertical, FolderOpen, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api, PROJECTS_CHANGED_EVENT } from '../api'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
 import { TextField } from '../components/fields'
-import { Alert, Button, Card, EmptyState, PageHeader, Skeleton } from '../components/ui'
+import { Alert, Button, EmptyState, PageHeader, Skeleton } from '../components/ui'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/kit/dropdown-menu'
 import { errorMessage } from '../errors'
 import { relativeTime } from '../format'
+import { useDocumentTitle } from '../hooks'
 import type { Project } from '../types'
 
+function fileCount(project: Project): string {
+  const count = project.files.length
+  if (count === 0) return 'No files yet'
+  return `${count} ${count === 1 ? 'file' : 'files'}`
+}
+
 export default function ProjectsPage() {
+  const navigate = useNavigate()
   const [projects, setProjects] = useState<Project[] | null>(null)
-  const [name, setName] = useState('')
-  const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
   const [deleting, setDeleting] = useState<Project | null>(null)
   const [renaming, setRenaming] = useState<Project | null>(null)
+  useDocumentTitle('Projects')
 
   useEffect(() => {
     const load = () =>
       api
         .listProjects()
-        .then(setProjects)
+        .then((list) => {
+          setProjects(list)
+          setError(null)
+        })
         .catch((e) => setError(errorMessage(e)))
     void load()
     window.addEventListener(PROJECTS_CHANGED_EVENT, load)
     return () => window.removeEventListener(PROJECTS_CHANGED_EVENT, load)
   }, [])
 
-  async function create(event: React.FormEvent) {
-    event.preventDefault()
-    if (!name.trim()) return
-    setCreating(true)
-    try {
-      const project = await api.createProject(name.trim())
-      setProjects((current) => [project, ...(current ?? [])])
-      setName('')
-      setError(null)
-    } catch (e) {
-      setError(errorMessage(e))
-    } finally {
-      setCreating(false)
-    }
+  async function create(name: string) {
+    const project = await api.createProject(name)
+    navigate(`/projects/${project.id}`)
   }
 
   async function remove(project: Project) {
@@ -55,114 +61,130 @@ export default function ProjectsPage() {
     setProjects((current) => (current ?? []).map((item) => (item.id === project.id ? updated : item)))
   }
 
+  const newProject = (
+    <Button variant="primary" icon={<Plus aria-hidden className="h-4 w-4" />} onClick={() => setCreating(true)}>
+      New project
+    </Button>
+  )
+
   return (
     <div>
       <PageHeader
+        display
         title="Projects"
-        subtitle="Upload a PowerPoint deck or Beamer slides and get back accessible slides with described figures."
+        subtitle="Each project holds the slides for one lecture or course. Upload a PowerPoint deck or LaTeX Beamer slides, then make them accessible."
+        actions={projects && projects.length > 0 ? newProject : undefined}
       />
 
-      <Card className="mb-6">
-        <form onSubmit={create} className="flex flex-wrap items-end gap-3">
-          <label className="min-w-64 flex-1 text-sm font-medium text-slate-700">
-            New project name
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. CSCE 421 Lecture 1"
-              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400"
-            />
-          </label>
-          <Button
-            type="submit"
-            variant="primary"
-            loading={creating}
-            disabled={!name.trim()}
-            icon={<Plus aria-hidden className="h-4 w-4" />}
-          >
-            Create project
-          </Button>
-        </form>
-      </Card>
-
       {error && (
-        <div className="mb-4">
-          <Alert tone="danger" title="Something went wrong">
-            {error}
+        <div className="mb-6">
+          <Alert tone="danger" title="Your projects could not be loaded">
+            {error} Refresh the page to try again.
           </Alert>
         </div>
       )}
 
       {projects === null && !error && (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div aria-hidden className="divide-y divide-slate-200 rounded-lg border border-slate-200">
           {[0, 1, 2].map((key) => (
-            <Skeleton key={key} className="h-24" />
+            <div key={key} className="flex items-center gap-4 px-4 py-4">
+              <Skeleton className="h-4 w-64" />
+              <Skeleton className="ml-auto h-4 w-24" />
+            </div>
           ))}
         </div>
       )}
 
       {projects?.length === 0 && (
-        <EmptyState icon={<FolderOpen aria-hidden className="h-6 w-6" />} title="No projects yet">
-          Create your first project above, then upload a .pptx deck, or a .zip of your Beamer slides.
+        <EmptyState
+          icon={<FolderOpen aria-hidden className="h-6 w-6" />}
+          title="Create your first project"
+          action={newProject}
+        >
+          A project holds the slides for one lecture. You will upload a .pptx deck or a .zip of your Beamer
+          slides next.
         </EmptyState>
       )}
 
       {projects && projects.length > 0 && (
-        <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {projects.map((project) => (
-            <li
-              key={project.id}
-              className="group relative rounded-xl border border-slate-200 bg-white shadow-sm transition hover:border-brand-300 hover:shadow-md"
-            >
-              <Link to={`/projects/${project.id}`} className="flex items-center gap-4 rounded-xl p-4">
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700">
-                  <FolderOpen aria-hidden className="h-5 w-5" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-semibold text-slate-900">{project.name}</span>
-                  <span className="block text-sm text-slate-500">
-                    {project.files.length} {project.files.length === 1 ? 'file' : 'files'} · updated{' '}
-                    {relativeTime(project.updated_at)}
+        <div className="rounded-lg border border-slate-200">
+          <div className="hidden grid-cols-[1fr_8rem_9rem_2.5rem] gap-4 border-b border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 sm:grid">
+            <span>Name</span>
+            <span>Files</span>
+            <span>Updated</span>
+            <span className="sr-only">Actions</span>
+          </div>
+          <ul className="divide-y divide-slate-200">
+            {projects.map((project) => (
+              <li
+                key={project.id}
+                className="relative grid grid-cols-[1fr_2.5rem] items-center gap-x-4 px-4 py-3 transition-colors hover:bg-slate-50 sm:grid-cols-[1fr_8rem_9rem_2.5rem]"
+              >
+                <div className="min-w-0">
+                  <Link
+                    to={`/projects/${project.id}`}
+                    className="block truncate font-semibold text-slate-900 underline-offset-4 after:absolute after:inset-0 hover:underline"
+                  >
+                    {project.name}
+                  </Link>
+                  <span className="block text-sm text-slate-600 sm:hidden">
+                    {fileCount(project)} · updated {relativeTime(project.updated_at)}
                   </span>
-                </span>
-                <ChevronRight aria-hidden className="h-5 w-5 text-slate-300 group-hover:text-brand-600" />
-              </Link>
-              <div className="absolute right-2 top-2 flex opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
-                <button
-                  type="button"
-                  onClick={() => setRenaming(project)}
-                  aria-label={`Rename ${project.name}`}
-                  className="rounded-md p-1.5 text-slate-300 hover:bg-slate-100 hover:text-slate-700"
-                >
-                  <Pencil aria-hidden className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDeleting(project)}
-                  aria-label={`Delete ${project.name}`}
-                  className="rounded-md p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-600"
-                >
-                  <Trash2 aria-hidden className="h-4 w-4" />
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
+                </div>
+                <span className="hidden text-sm text-slate-600 sm:block">{fileCount(project)}</span>
+                <span className="hidden text-sm text-slate-600 sm:block">{relativeTime(project.updated_at)}</span>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    aria-label={`More actions for ${project.name}`}
+                    className="relative z-10 flex h-9 w-9 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 hover:text-slate-900 data-[state=open]:bg-slate-100"
+                  >
+                    <EllipsisVertical aria-hidden className="h-4 w-4" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    <DropdownMenuItem onSelect={() => setRenaming(project)}>
+                      <Pencil aria-hidden className="h-4 w-4" />
+                      Rename
+                    </DropdownMenuItem>
+                    <DropdownMenuItem variant="destructive" onSelect={() => setDeleting(project)}>
+                      <Trash2 aria-hidden className="h-4 w-4" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {creating && (
+        <NameDialog
+          title="New project"
+          label="Project name"
+          placeholder="CSCE 625 Lecture 5: Graph search"
+          confirmLabel="Create project"
+          initial=""
+          onClose={() => setCreating(false)}
+          onSave={create}
+        />
       )}
       {deleting && (
         <ConfirmDialog
-          title="Delete project?"
+          title="Delete this project?"
           confirmLabel="Delete project"
           onClose={() => setDeleting(null)}
           onConfirm={() => remove(deleting)}
         >
-          “{deleting.name}” and all of its files and translations will be removed. This cannot be
+          “{deleting.name}”, its uploaded files and every translation of them will be removed. This cannot be
           undone.
         </ConfirmDialog>
       )}
       {renaming && (
-        <RenameDialog
-          project={renaming}
+        <NameDialog
+          title="Rename project"
+          label="Project name"
+          confirmLabel="Save name"
+          initial={renaming.name}
           onClose={() => setRenaming(null)}
           onSave={(name) => rename(renaming, name)}
         />
@@ -171,21 +193,33 @@ export default function ProjectsPage() {
   )
 }
 
-function RenameDialog({
-  project,
+function NameDialog({
+  title,
+  label,
+  placeholder,
+  confirmLabel,
+  initial,
   onClose,
   onSave,
 }: {
-  project: Project
+  title: string
+  label: string
+  placeholder?: string
+  confirmLabel: string
+  initial: string
   onClose: () => void
   onSave: (name: string) => Promise<void>
 }) {
-  const [name, setName] = useState(project.name)
+  const [name, setName] = useState(initial)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
+    if (!name.trim()) {
+      setError('Enter a name for the project.')
+      return
+    }
     setBusy(true)
     try {
       await onSave(name.trim())
@@ -197,14 +231,20 @@ function RenameDialog({
   }
 
   return (
-    <Modal title="Rename project" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-4 px-5 pb-5 pt-3">
-        <TextField label="Project name" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-        {error && <Alert tone="danger">{error}</Alert>}
+    <Modal title={title} onClose={onClose}>
+      <form onSubmit={submit} className="space-y-5 px-6 pb-6 pt-4" noValidate>
+        <TextField
+          label={label}
+          value={name}
+          placeholder={placeholder}
+          onChange={(e) => setName(e.target.value)}
+          error={error}
+          autoFocus
+        />
         <div className="flex justify-end gap-2">
           <Button onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="primary" loading={busy} disabled={!name.trim() || name.trim() === project.name}>
-            Save
+          <Button type="submit" variant="primary" loading={busy} disabled={name.trim() === initial && initial !== ''}>
+            {confirmLabel}
           </Button>
         </div>
       </form>
