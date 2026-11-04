@@ -68,6 +68,13 @@
 }
 
 @layer base {
+  /* Plain borders use the divider gray, as the ObsidianUI components expect */
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-border);
+  }
+
   html {
     -webkit-text-size-adjust: 100%;
   }
