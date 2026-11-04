@@ -168,3 +168,9 @@ def test_transcribed_text_and_neighbouring_titles_reach_the_model_when_present()
     text = capability.build_request(enriched).messages[0].text
     assert '"text_in_image": ["then return node"]' in text
     assert '"neighbouring_slide_titles": ["Graph search"]' in text
+
+
+def test_the_prompt_gives_logos_a_short_name_and_keeps_them_informative() -> None:
+    prompt = FigureDescriptionCapability(FakeModelClient()).prompt
+    assert '"Texas A&M University logo"' in prompt
+    assert "A logo is not decorative" in prompt

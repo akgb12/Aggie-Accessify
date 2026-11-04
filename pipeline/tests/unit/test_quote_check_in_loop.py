@@ -82,7 +82,7 @@ def test_a_picture_is_transcribed_first_and_its_text_makes_quotes_checkable(
         figure_inputs=_inputs(),
     )
     versions = [request.prompt_version for request in fake.requests]
-    assert versions == ["text_inventory_v1", "figure_description_v4"]
+    assert versions == ["text_inventory_v1", "figure_description_v5"]
     # The describer saw the transcription; the quote was found in it, so no check was needed
     assert "held out once" in fake.requests[1].messages[0].text
     assert state.figure_inputs[CV_ID].image_text == ["Fold 1", "held out once"]
