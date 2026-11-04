@@ -13,6 +13,8 @@ from a11y_pipeline.ir.models import DocumentIR, Element, Issue
 # A quote this similar to drawn text counts as that text, misread; short quotes must match exactly
 NEAR_MATCH_RATIO = 0.8
 NEAR_MATCH_MIN_CHARS = 6
+# Quotes with fewer letters and digits than this are not checked
+MIN_QUOTE_CHARS = 2
 
 
 def figure_contradiction_veto(
@@ -167,18 +169,30 @@ def _unknown_quoted_label(
     visible_labels: list[str],
     rendered_text: list[str] | None = None,
 ) -> str | None:
-    # Find a quoted label absent from visible source labels and from the words drawn in the figure
+    # The first quoted label that is neither a source label nor drawn in the figure
+    unknown = unknown_quoted_labels(text, visible_labels, rendered_text)
+    return unknown[0] if unknown else None
+
+
+def unknown_quoted_labels(
+    text: str,
+    visible_labels: list[str],
+    rendered_text: list[str] | None = None,
+) -> list[str]:
+    # Every quoted label absent from visible source labels and from the words drawn in the figure
     visible: set[str] = set()
     for label in visible_labels:
         visible.add(loosen_text(normalize_text(label)))
     drawn = [_folded_words(" ".join(rendered_text or []))]
     drawn.extend(_folded_words(label) for label in visible_labels)
     pattern = re.compile(r"""["“”']([^"“”']+)["“”']""")
+    unknown: list[str] = []
     for match in pattern.finditer(text):
         quoted = re.sub(r"\s+", " ", match.group(1)).strip()
         if not quoted or len(quoted.split()) > 8:
             continue
-        if re.search(r"[A-Za-z0-9]", quoted) is None:
+        # A quoted single letter ("a", "x") names nothing worth checking
+        if len(re.findall(r"[A-Za-z0-9]", quoted)) < MIN_QUOTE_CHARS:
             continue
         if _is_known_label(loosen_text(normalize_text(quoted)), visible):
             continue
@@ -187,8 +201,9 @@ def _unknown_quoted_label(
             continue
         if any(_nearly_contains(words, quoted_words) for words in drawn):
             continue
-        return quoted
-    return None
+        if quoted not in unknown:
+            unknown.append(quoted)
+    return unknown
 
 
 def _nearly_contains(words: list[str], quoted_words: list[str]) -> bool:
