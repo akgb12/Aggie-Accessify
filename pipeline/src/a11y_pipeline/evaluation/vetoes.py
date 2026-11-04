@@ -185,10 +185,8 @@ def unknown_quoted_labels(
         visible.add(loosen_text(normalize_text(label)))
     drawn = [_folded_words(" ".join(rendered_text or []))]
     drawn.extend(_folded_words(label) for label in visible_labels)
-    pattern = re.compile(r"""["“”']([^"“”']+)["“”']""")
     unknown: list[str] = []
-    for match in pattern.finditer(text):
-        quoted = re.sub(r"\s+", " ", match.group(1)).strip()
+    for quoted in quoted_spans(text):
         if not quoted or len(quoted.split()) > 8:
             continue
         # A quoted single letter ("a", "x") names nothing worth checking
@@ -204,6 +202,23 @@ def unknown_quoted_labels(
         if quoted not in unknown:
             unknown.append(quoted)
     return unknown
+
+
+# Double quotes pair with each other. A single quote only opens after a space or bracket and
+# only closes before a space or punctuation, so the apostrophes in "node's" or "don't" are
+# never read as quote marks.
+QUOTE_PATTERN = re.compile(
+    r"""\"([^\"\n]+)\"|“([^”\n]+)”|‘([^’\n]+)’|(?<![\w'])'([^'\n]+?)'(?![\w'])"""
+)
+
+
+def quoted_spans(text: str) -> list[str]:
+    # The quoted pieces of a description, in order
+    spans: list[str] = []
+    for match in QUOTE_PATTERN.finditer(text):
+        content = next(group for group in match.groups() if group is not None)
+        spans.append(re.sub(r"\s+", " ", content).strip())
+    return spans
 
 
 def _nearly_contains(words: list[str], quoted_words: list[str]) -> bool:

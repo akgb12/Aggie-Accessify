@@ -1,5 +1,9 @@
 from a11y_pipeline.evaluation.concepts import _clean_tikz_label, evaluate_coverage
-from a11y_pipeline.evaluation.vetoes import figure_contradiction_veto, unknown_quoted_labels
+from a11y_pipeline.evaluation.vetoes import (
+    figure_contradiction_veto,
+    quoted_spans,
+    unknown_quoted_labels,
+)
 from a11y_pipeline.ir.ids import fingerprint_source
 from a11y_pipeline.ir.models import Accessibility, Element, Fidelity, SourceRef
 
@@ -177,3 +181,10 @@ def test_quotes_are_not_checked_when_the_figure_text_cannot_be_read() -> None:
 def test_every_unknown_quote_is_listed_once_and_single_letters_are_skipped() -> None:
     text = "Words 'a', 'zebra' and 'cherry' point to cells; 'zebra' is last."
     assert unknown_quoted_labels(text, ["cherry"], ["w1", "w2"]) == ["zebra"]
+
+
+def test_apostrophes_are_not_read_as_quote_marks() -> None:
+    text = "The node's state is followed by 'then return node'; don't miss 'end'."
+    assert quoted_spans(text) == ["then return node", "end"]
+    nested = "State 'S' leads to 'Fringe [], Closed [S]'. Arrow labeled \"d\" goes on."
+    assert quoted_spans(nested) == ["S", "Fringe [], Closed [S]", "d"]
