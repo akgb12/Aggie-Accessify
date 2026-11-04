@@ -13,6 +13,8 @@ from a11y_pipeline.capabilities.base import (
 )
 from a11y_pipeline.capabilities.feedback import repair_problems
 from a11y_pipeline.capabilities.figure_judge import FigureJudgeCapability
+from a11y_pipeline.capabilities.quote_check import QuoteCheckCapability
+from a11y_pipeline.evaluation.vetoes import unknown_quoted_labels
 from a11y_pipeline.ir.models import Candidate, DocumentIR, HistoryEntry, Issue, Patch
 from a11y_pipeline.ir.patches import apply_patches
 from a11y_pipeline.orchestration.candidates import evaluate_candidate
@@ -136,6 +138,7 @@ def run_capabilities_node(state: RunState) -> dict[str, object]:
     results: list[CapabilityResult] = []
     issues = list(state.issues)
     budget_exhausted = state.budget_exhausted
+    figure_inputs = dict(state.figure_inputs)
     for routed in state.routed_tasks:
         element_id = routed.task.element_id
         if state.current_round == 0 and element_id == state.seed_weak_element_id:
@@ -170,6 +173,16 @@ def run_capabilities_node(state: RunState) -> dict[str, object]:
             budget_exhausted = True
             break
         results.append(_append_history_patch(state, result, element_id))
+        if routed.task.capability == "figure_description":
+            try:
+                confirmed = _confirm_quotes(state, capability_input, result)
+            except BudgetExceeded:
+                budget_exhausted = True
+                break
+            if confirmed:
+                figure_inputs[element_id] = capability_input.model_copy(
+                    update={"rendered_text": [*capability_input.rendered_text, *confirmed]}
+                )
     budget_spent = state.budget_spent
     if state.budget_controller is not None:
         budget_spent = state.budget_controller.spent_usd
@@ -178,7 +191,35 @@ def run_capabilities_node(state: RunState) -> dict[str, object]:
         "issues": issues,
         "budget_exhausted": budget_exhausted,
         "budget_spent": budget_spent,
+        "figure_inputs": figure_inputs,
     }
+
+
+def _confirm_quotes(
+    state: RunState,
+    capability_input: FigureDescriptionInput,
+    result: CapabilityResult,
+) -> list[str]:
+    # Quotes in a new description that the deterministic checks cannot find in the figure's
+    # known text are put to a narrow yes/no check against the image. Confirmed quotes join
+    # the figure's drawn text, so the evaluator accepts them; the rest are still vetoed.
+    if not state.config.verify_quotes or state.model_client is None:
+        return []
+    element = _require_base_ir(state).elements.get(capability_input.element_id)
+    if element is None or element.attrs.get("text_unverifiable"):
+        return []
+    values = {patch.path: patch.value for patch in result.patches}
+    text = "\n".join(
+        str(values.get(path) or "")
+        for path in ("accessibility.alt_text", "accessibility.extended_description")
+    )
+    quotes = unknown_quoted_labels(
+        text, capability_input.visible_labels, capability_input.rendered_text
+    )
+    if not quotes:
+        return []
+    checker = QuoteCheckCapability(state.model_client, model=state.config.generator_model)
+    return checker.written(capability_input.element_id, capability_input.image_png, quotes)
 
 
 def synthesize_node(state: RunState) -> dict[str, object]:

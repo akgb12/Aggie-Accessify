@@ -5,7 +5,11 @@ from pathlib import Path
 
 from a11y_pipeline.adapters import get_adapter
 from a11y_pipeline.bundle.bundle import Bundle
-from a11y_pipeline.capabilities.base import FigureJudgeOutput, SlideTitleOutput
+from a11y_pipeline.capabilities.base import (
+    FigureJudgeOutput,
+    QuoteCheckOutput,
+    SlideTitleOutput,
+)
 from a11y_pipeline.config import Settings
 from a11y_pipeline.ir.serialize import dumps_document
 from a11y_pipeline.models.anthropic_client import AnthropicModelClient
@@ -127,6 +131,9 @@ def _good_fake_response(request: ModelRequest) -> ScriptValue:
     # Return deterministic useful descriptions for local runs
     if request.output_schema is FigureJudgeOutput:
         return {"verdict": "good", "invented": [], "missing": []}
+    if request.output_schema is QuoteCheckOutput:
+        # The fake model cannot see; it confirms nothing, so invented quotes stay vetoed
+        return {"results": []}
     if request.output_schema is SlideTitleOutput:
         slide = request.element_id.split("/", 1)[0].replace("_", " ")
         return {"title": f"Overview of {slide}"}

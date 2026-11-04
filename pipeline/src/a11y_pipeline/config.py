@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     concept_coverage_threshold: float = 0.75
     element_repair_limit: int = 2
     judge_in_loop: bool = False
+    # Ask the model whether a quote the checks cannot find is really written in the figure
+    verify_quotes: bool = True
     runs_dir: Path = Path("runs")
     tex_engine: str = "pdflatex"
     compile_timeout_seconds: int = 180
