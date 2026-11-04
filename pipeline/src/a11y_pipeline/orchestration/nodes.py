@@ -218,8 +218,19 @@ def _confirm_quotes(
     )
     if not quotes:
         return []
-    checker = QuoteCheckCapability(state.model_client, model=state.config.generator_model)
-    return checker.written(capability_input.element_id, capability_input.image_png, quotes)
+    # Words elsewhere on the slide are real, not invented, even when quoted for this figure
+    slide_words = [*capability_input.nearby_text, capability_input.slide_title or ""]
+    unseen = unknown_quoted_labels(
+        text,
+        capability_input.visible_labels,
+        [*capability_input.rendered_text, *slide_words],
+    )
+    confirmed = [quote for quote in quotes if quote not in unseen]
+    if unseen:
+        checker = QuoteCheckCapability(state.model_client, model=state.config.generator_model)
+        image = capability_input.image_png
+        confirmed += checker.written(capability_input.element_id, image, unseen)
+    return confirmed
 
 
 def synthesize_node(state: RunState) -> dict[str, object]:

@@ -50,3 +50,12 @@ def test_quotes_are_not_put_to_the_model_when_switched_off(tmp_path: Path) -> No
     fake = FakeModelClient(scripts={CV_ID: [QUOTING_CV, PLAIN_CV]})
     _run(tmp_path, fake, verify_quotes=False)
     assert all(request.prompt_version != "quote_check_v1" for request in fake.requests)
+
+
+def test_a_quote_of_other_text_on_the_slide_needs_no_model_check(tmp_path: Path) -> None:
+    quoting_title = {"alt_text": "Five folds in a row, the folds of 'Cross validation'."}
+    fake = FakeModelClient(scripts={CV_ID: [quoting_title]})
+    state = _run(tmp_path, fake)
+    assert all(request.prompt_version != "quote_check_v1" for request in fake.requests)
+    assert state.final_ir is not None
+    assert state.final_ir.elements[CV_ID].accessibility.alt_text == quoting_title["alt_text"]
