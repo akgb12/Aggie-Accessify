@@ -57,7 +57,8 @@ def evaluate_candidate(
     judged = judged_by_element or {}
     coverage_by_element: dict[str, float | None] = {}
     for element in document.elements.values():
-        if element.semantic_type != "figure":
+        # A figure marked decorative is meant to be skipped by screen readers
+        if element.semantic_type != "figure" or element.accessibility.decorative:
             continue
         coverage = evaluate_coverage(
             delivered_description(element),
