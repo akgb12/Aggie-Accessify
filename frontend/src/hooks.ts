@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 // A boolean preference remembered across visits; storage failures fall back to the default
 export function usePersistentFlag(key: string, initial: boolean): [boolean, (value: boolean) => void] {
@@ -22,4 +22,11 @@ export function usePersistentFlag(key: string, initial: boolean): [boolean, (val
     [key],
   )
   return [value, update]
+}
+
+// Name the browser tab after the page, as "Page · Aggie Accessify"
+export function useDocumentTitle(page: string | null | undefined) {
+  useEffect(() => {
+    document.title = page ? `${page} · Aggie Accessify` : 'Aggie Accessify'
+  }, [page])
 }
