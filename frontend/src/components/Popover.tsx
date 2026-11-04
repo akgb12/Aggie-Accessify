@@ -1,8 +1,11 @@
 import { ChevronDown } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import type { ReactNode } from 'react'
+import { Popover as Root, PopoverContent, PopoverTrigger } from '@/components/kit/popover'
 import { cx } from './classes'
 
+// A labelled button that opens a panel. Built on Radix, so focus moves into the panel, Escape and
+// outside clicks close it, and focus returns to the button.
 export default function Popover({
   label,
   icon,
@@ -24,59 +27,30 @@ export default function Popover({
 }) {
   const [innerOpen, setInnerOpen] = useState(false)
   const open = controlledOpen ?? innerOpen
-  const setOpen = useCallback(
-    (next: boolean) => {
-      setInnerOpen(next)
-      onOpenChange?.(next)
-    },
-    [onOpenChange],
-  )
-  const root = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const close = (event: MouseEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false)
-    }
-    const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
-    }
-    document.addEventListener('mousedown', close)
-    document.addEventListener('keydown', escape)
-    return () => {
-      document.removeEventListener('mousedown', close)
-      document.removeEventListener('keydown', escape)
-    }
-  }, [open, setOpen])
+  function setOpen(next: boolean) {
+    setInnerOpen(next)
+    onOpenChange?.(next)
+  }
 
   return (
-    <div ref={root} className="relative">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-haspopup="true"
-        onClick={() => setOpen(!open)}
+    <Root open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
         className={cx(
-          'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium',
-          buttonClassName ?? 'text-slate-700 hover:bg-slate-100',
+          'inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm font-semibold transition-colors',
+          buttonClassName ?? 'text-slate-800 hover:bg-slate-100 data-[state=open]:bg-slate-100',
         )}
       >
         {icon}
         {label}
-        <ChevronDown aria-hidden className="h-3.5 w-3.5 opacity-70" />
-      </button>
-      {open && (
-        <div
-          role="dialog"
-          className={cx(
-            'absolute z-40 mt-1 rounded-lg border border-slate-200 bg-white p-3 text-sm shadow-lg',
-            width,
-            align === 'right' ? 'right-0' : 'left-0',
-          )}
-        >
-          {children}
-        </div>
-      )}
-    </div>
+        <ChevronDown aria-hidden className="h-4 w-4 opacity-70" />
+      </PopoverTrigger>
+      <PopoverContent
+        align={align === 'right' ? 'end' : 'start'}
+        sideOffset={6}
+        className={cx('rounded-lg p-4 text-sm', width)}
+      >
+        {children}
+      </PopoverContent>
+    </Root>
   )
 }
