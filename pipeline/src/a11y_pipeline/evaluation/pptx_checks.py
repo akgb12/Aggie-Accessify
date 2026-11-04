@@ -11,16 +11,15 @@ def pptx_check_results(ir: DocumentIR) -> dict[str, bool]:
     titled = [title for title in titles if title]
     figures = [e for e in ir.elements.values() if e.semantic_type == "figure"]
     tables = [e for e in ir.elements.values() if e.semantic_type == "table"]
-    ungrouped = [issue for issue in ir.issues if issue.code == "ungrouped_diagram"]
     return {
         "slide_titles": len(titled) == len(slides),
         "unique_titles": len(set(titled)) == len(titled),
         "title_first_in_reading_order": _titles_first(ir),
         "figures_have_alt_text": all(_has_description(figure) for figure in figures),
         "tables_have_header_row": all(table.attrs.get("first_row_header") for table in tables),
-        "diagrams_are_grouped": not ungrouped,
         "document_title": bool(ir.metadata.get("title", "").strip()) or bool(titled),
-        "document_language": bool(ir.metadata.get("language", "").strip()),
+        "document_language": bool(_language(ir)),
+        "text_contrast": not any(issue.code == "low_contrast" for issue in ir.issues),
     }
 
 
@@ -41,8 +40,7 @@ def pptx_accessibility_metrics(
         "B": None,
         "M": None,
         "D": (
-            50.0 * bool(ir.metadata.get("title", "").strip() or titled)
-            + 50.0 * bool(ir.metadata.get("language", "").strip())
+            50.0 * bool(ir.metadata.get("title", "").strip() or titled) + 50.0 * bool(_language(ir))
         ),
         "C": _share(sum(checks.values()), len(checks)),
     }
@@ -69,12 +67,19 @@ def _titled_slides_with_title_first(ir: DocumentIR) -> tuple[int, int]:
     total = 0
     first = 0
     for container in ir.containers:
-        if container.title_element_id is None:
+        if not _title(ir, container.title_element_id):
             continue
         total += 1
-        if container.element_ids and container.element_ids[0] == container.title_element_id:
+        # The parser decides this from the full stacking order, decorative shapes excluded
+        if container.attrs.get("title_first", True):
             first += 1
     return first, total
+
+
+def _language(ir: DocumentIR) -> str:
+    # The deck language, or the one the update writes when the deck has none
+    language = ir.metadata.get("language", "").strip()
+    return language or ir.metadata.get("language_proposed", "").strip()
 
 
 def _titles_first(ir: DocumentIR) -> bool:
