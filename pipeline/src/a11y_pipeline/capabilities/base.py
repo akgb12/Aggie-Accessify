@@ -20,8 +20,10 @@ class FigureDescriptionInput(BaseModel):
     previous_alt: str | None = None
     previous_extended: str | None = None
     problems: list[str] = []
-    # Titles of nearby slides, when the request is to propose a slide title
+    # Titles of nearby slides: context for a slide title or for what a figure teaches
     other_titles: list[str] = []
+    # A transcription of the words drawn in the image, from the text inventory
+    image_text: list[str] = []
 
 
 class FigureDescriptionOutput(BaseModel):

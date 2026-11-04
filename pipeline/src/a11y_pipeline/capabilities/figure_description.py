@@ -9,7 +9,7 @@ from a11y_pipeline.capabilities.base import (
 from a11y_pipeline.ir.models import HistoryEntry, Patch
 from a11y_pipeline.models.client import ModelClient, ModelMessage, ModelRequest
 
-PROMPT_VERSION = "figure_description_v3"
+PROMPT_VERSION = "figure_description_v4"
 DEFAULT_MODEL = "claude-sonnet-5-5"
 DEFAULT_MAX_TOKENS = 1000
 
@@ -41,6 +41,10 @@ class FigureDescriptionCapability:
         }
         if capability_input.subtype == "diagram" and capability_input.source_code is not None:
             context["source_code"] = capability_input.source_code
+        if capability_input.image_text:
+            context["text_in_image"] = capability_input.image_text
+        if capability_input.other_titles:
+            context["neighbouring_slide_titles"] = capability_input.other_titles
         if capability_input.problems:
             context["previous_attempt"] = {
                 "alt_text": capability_input.previous_alt,

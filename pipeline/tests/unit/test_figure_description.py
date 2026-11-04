@@ -156,3 +156,15 @@ def test_figure_description_marks_failed_after_two_invalid_responses(tmp_path) -
     assert len(lines) == 2
     assert json.loads(lines[0])["status"] == "error"
     assert json.loads(lines[1])["status"] == "error"
+
+
+def test_transcribed_text_and_neighbouring_titles_reach_the_model_when_present() -> None:
+    capability = FigureDescriptionCapability(FakeModelClient())
+    plain = capability.build_request(_capability_input())
+    assert "text_in_image" not in plain.messages[0].text
+    enriched = _capability_input().model_copy(
+        update={"image_text": ["then return node"], "other_titles": ["Graph search"]}
+    )
+    text = capability.build_request(enriched).messages[0].text
+    assert '"text_in_image": ["then return node"]' in text
+    assert '"neighbouring_slide_titles": ["Graph search"]' in text
