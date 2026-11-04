@@ -1,13 +1,14 @@
 import { MousePointerClick } from 'lucide-react'
 import { absoluteUrl } from '../api'
 import { elementLabel, formatCost } from '../format'
+import { describeIssue, severityWord } from '../issues'
 import { statusColor, statusLabel } from '../status'
 import type { ReviewElement } from '../types'
 import StatusSwatch from './StatusSwatch'
 import { Badge } from './ui'
 
 function Heading({ children }: { children: React.ReactNode }) {
-  return <h3 className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">{children}</h3>
+  return <h3 className="mb-1.5 text-sm font-semibold text-slate-800">{children}</h3>
 }
 
 function PageSummary({
@@ -24,7 +25,7 @@ function PageSummary({
       <h2 className="text-base font-semibold text-slate-900">Page {pageNumber}</h2>
       {flagged.length === 0 ? (
         <p className="mt-1 flex items-start gap-2 text-sm text-slate-500">
-          <MousePointerClick aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" />
+          <MousePointerClick aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
           Nothing is flagged here. Click anything on the slide to inspect it.
         </p>
       ) : (
@@ -142,20 +143,42 @@ export default function Inspector({
       {element.issues.length > 0 && (
         <section>
           <Heading>Issues</Heading>
-          <ul className="space-y-2">
-            {element.issues.map((issue, index) => (
-              <li key={`${issue.code}-${index}`} className="flex gap-2 text-sm text-slate-700">
-                <Badge tone={issue.severity === 'error' ? 'danger' : 'warning'}>{issue.severity}</Badge>
-                <span>{issue.message}</span>
-              </li>
-            ))}
+          <ul className="space-y-3">
+            {element.issues.map((issue, index) => {
+              const wording = describeIssue(issue)
+              return (
+                <li key={`${issue.code}-${index}`} className="text-sm">
+                  <span className="flex items-start gap-2">
+                    <Badge tone={issue.severity === 'info' ? 'neutral' : issue.severity === 'warning' ? 'warning' : 'danger'}>
+                      {severityWord(issue.severity)}
+                    </Badge>
+                    <span className="font-semibold text-slate-900">{wording.title}</span>
+                  </span>
+                  <span className="mt-1 block text-slate-600">{wording.explanation}</span>
+                </li>
+              )
+            })}
           </ul>
         </section>
       )}
 
+      <details className="group text-sm">
+        <summary className="cursor-pointer font-semibold text-slate-700 hover:text-slate-900">Technical details</summary>
+        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
+          <dt className="text-slate-400">ID</dt>
+          <dd className="break-all font-mono text-slate-700">{element.id}</dd>
+          <dt className="text-slate-400">PDF role</dt>
+          <dd>{element.role ?? '–'}</dd>
+          <dt className="text-slate-400">Pages</dt>
+          <dd>{element.pages.length > 0 ? element.pages.join(', ') : '–'}</dd>
+          <dt className="text-slate-400">Source</dt>
+          <dd className="font-mono">
+            {sourceLabel(source)}
+          </dd>
+        </dl>
       {element.history.length > 0 && (
         <section>
-          <Heading>History</Heading>
+          <p className="mb-2 mt-4 text-sm font-semibold text-slate-800">History</p>
           <ol className="relative space-y-3 border-l border-slate-200 pl-4">
             {element.history.map((entry, index) => (
               <li key={index} className="relative text-sm">
@@ -178,21 +201,6 @@ export default function Inspector({
           </ol>
         </section>
       )}
-
-      <details className="group text-sm">
-        <summary className="cursor-pointer font-medium text-slate-500 hover:text-slate-800">Technical details</summary>
-        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
-          <dt className="text-slate-400">ID</dt>
-          <dd className="break-all font-mono text-slate-700">{element.id}</dd>
-          <dt className="text-slate-400">PDF role</dt>
-          <dd>{element.role ?? '–'}</dd>
-          <dt className="text-slate-400">Pages</dt>
-          <dd>{element.pages.length > 0 ? element.pages.join(', ') : '–'}</dd>
-          <dt className="text-slate-400">Source</dt>
-          <dd className="font-mono">
-            {sourceLabel(source)}
-          </dd>
-        </dl>
       </details>
     </div>
   )
