@@ -4,9 +4,11 @@ from typing import Any
 
 from a11y_pipeline.analysis.needs import Task
 from a11y_pipeline.capabilities.figure_description import FigureDescriptionCapability
+from a11y_pipeline.capabilities.slide_title import SlideTitleCapability
 
 CAPABILITY_REGISTRY: Mapping[str, Any] = {
     "figure_description": FigureDescriptionCapability,
+    "slide_title": SlideTitleCapability,
 }
 
 

@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from a11y_pipeline.adapters import get_adapter
 from a11y_pipeline.capabilities.figure_description import PROMPT_VERSION
+from a11y_pipeline.capabilities.slide_title import TITLE_PROMPT_VERSION
 from a11y_pipeline.config import Settings
 from a11y_pipeline.evaluation.pdf_checks import check_pdf
 from a11y_pipeline.ir.models import Candidate, Issue
@@ -294,7 +295,9 @@ def _materialize_pptx_run(folder: RunFolder, state: RunState, input_path: Path) 
     )
     write_run_snapshots(folder, state)
     _write_operations(folder, [], written.operations)
-    manifest = build_manifest(state, state.bundle, input_path, [PROMPT_VERSION], pages)
+    manifest = build_manifest(
+        state, state.bundle, input_path, [PROMPT_VERSION, TITLE_PROMPT_VERSION], pages
+    )
     manifest["outputs"] = _pptx_outputs()
     write_manifest(folder.manifest_path, manifest)
     return CompletedRun(folder=folder, state=state, stats=stats)

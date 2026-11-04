@@ -16,6 +16,16 @@ def analyze_needs(document: DocumentIR) -> list[Task]:
     tasks: list[Task] = []
     for element in document.elements.values():
         accessibility = element.accessibility
+        if element.semantic_type == "heading" and element.attrs.get("added_title"):
+            if accessibility.status == "needs_description" and not accessibility.locked:
+                tasks.append(
+                    Task(
+                        element_id=element.id,
+                        capability="slide_title",
+                        reason="Slide has no title",
+                    )
+                )
+            continue
         if element.semantic_type != "figure":
             continue
         if accessibility.status != "needs_description":
