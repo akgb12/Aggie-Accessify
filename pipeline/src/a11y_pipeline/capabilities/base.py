@@ -43,6 +43,10 @@ class QuoteCheckOutput(BaseModel):
     results: list[QuoteResult]
 
 
+class TextInventoryOutput(BaseModel):
+    text: list[str]
+
+
 @dataclass(frozen=True)
 class CapabilityResult:
     patches: list[Patch]
