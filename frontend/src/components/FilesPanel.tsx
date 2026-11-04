@@ -44,9 +44,9 @@ export default function FilesPanel({ projectId, data, selectedFile, onSelect, on
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="shrink-0 space-y-1.5 border-b border-slate-100 p-2.5">
-        <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 has-[:disabled]:opacity-50">
+        <label className="flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 hover:bg-slate-50 has-[:disabled]:opacity-50 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-brand-600">
           {busy ? <Spinner /> : <Upload aria-hidden className="h-4 w-4" />}
-          Add files or a .zip
+          Add files
           <input
             type="file"
             multiple
@@ -60,8 +60,8 @@ export default function FilesPanel({ projectId, data, selectedFile, onSelect, on
           />
         </label>
         {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
-        <p className="text-xs text-slate-400">
-          Maroon files are slide decks you can translate (Beamer or PowerPoint). Click one to open it.
+        <p className="text-xs text-slate-600">
+          Slide decks you can make accessible are shown in maroon. Select one to open it.
         </p>
       </div>
       <div className="min-h-0 flex-1 overflow-auto pt-1">

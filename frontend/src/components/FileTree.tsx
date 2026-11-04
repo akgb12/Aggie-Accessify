@@ -18,13 +18,10 @@ interface Props {
 }
 
 function statusText(run: Run | undefined): string {
-  if (!run) return 'Not translated yet'
-  if (run.status === 'succeeded') {
-    const score = run.a_score !== null ? ` · A ${run.a_score.toFixed(0)}` : ''
-    return `Translated${score} · ${relativeTime(run.created_at)}`
-  }
-  if (run.status === 'queued' || run.status === 'running') return 'Translating…'
-  return run.status === 'failed' ? 'Last attempt failed' : 'Last attempt blocked'
+  if (!run) return 'Not made accessible yet'
+  if (run.status === 'succeeded') return `Made accessible ${relativeTime(run.created_at)}`
+  if (run.status === 'queued' || run.status === 'running') return 'Working on it'
+  return run.status === 'failed' ? 'Last run failed' : 'Last run needs files'
 }
 
 export default function FileTree({ files, targets, latestByFile, selectedFile, onSelect, onRemove }: Props) {
@@ -66,11 +63,11 @@ export default function FileTree({ files, targets, latestByFile, selectedFile, o
     const Icon = ICONS[fileKind(node.path)]
     const body = (
       <>
-        <Icon aria-hidden className={cx('h-4 w-4 shrink-0', isTarget ? 'text-brand-700' : 'text-slate-300')} />
+        <Icon aria-hidden className={cx('h-4 w-4 shrink-0', isTarget ? 'text-brand-800' : 'text-slate-400')} />
         <span className="min-w-0 flex-1">
           <span className={cx('block truncate', !isTarget && 'text-slate-400')}>{node.name}</span>
           {isTarget && (
-            <span className="block truncate text-[11px] text-slate-400">{statusText(latestByFile.get(node.path))}</span>
+            <span className="block truncate text-xs text-slate-600">{statusText(latestByFile.get(node.path))}</span>
           )}
         </span>
       </>
@@ -103,7 +100,7 @@ export default function FileTree({ files, targets, latestByFile, selectedFile, o
           type="button"
           onClick={() => onRemove(node.path)}
           aria-label={`Remove ${node.path}`}
-          className="absolute right-1 top-1.5 rounded p-0.5 text-slate-300 opacity-0 hover:bg-red-50 hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100"
+          className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-md text-slate-600 opacity-0 hover:bg-red-50 hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
         >
           <X aria-hidden className="h-3.5 w-3.5" />
         </button>
