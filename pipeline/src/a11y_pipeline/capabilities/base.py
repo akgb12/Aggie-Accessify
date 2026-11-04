@@ -34,6 +34,15 @@ class SlideTitleOutput(BaseModel):
     title: str
 
 
+class QuoteResult(BaseModel):
+    quote: str
+    written: bool
+
+
+class QuoteCheckOutput(BaseModel):
+    results: list[QuoteResult]
+
+
 @dataclass(frozen=True)
 class CapabilityResult:
     patches: list[Patch]
