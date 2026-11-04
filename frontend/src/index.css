@@ -3,6 +3,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* The app is light only for now; dark styles apply only under an explicit .dark class */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Texas A&M brand values (marcomm.tamu.edu, Aggie UX). Every color here is from the TAMU web
    palette; text colors keep at least 4.5:1 on white and control borders at least 3:1. */
 @theme {
