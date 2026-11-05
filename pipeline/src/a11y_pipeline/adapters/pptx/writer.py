@@ -10,7 +10,7 @@ from pathlib import Path
 from lxml import etree
 from pptx import Presentation
 
-from a11y_pipeline.adapters.pptx.structure import touches
+from a11y_pipeline.adapters.pptx.structure import is_default_title, touches
 from a11y_pipeline.bundle.bundle import Bundle
 from a11y_pipeline.ir.models import DocumentIR, Element, Issue
 from a11y_pipeline.render.pixeldiff import PixelCheck
@@ -423,7 +423,8 @@ def _set_core_properties(data: bytes, title: str | None, language: str | None) -
         node = root.find(f"{{{DC_NS}}}{name}")
         if node is None:
             node = etree.SubElement(root, f"{{{DC_NS}}}{name}")
-        if not (node.text or "").strip():
+        current = (node.text or "").strip()
+        if not current or (name == "title" and is_default_title(current)):
             node.text = value
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 

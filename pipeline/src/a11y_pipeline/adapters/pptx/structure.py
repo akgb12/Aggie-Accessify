@@ -107,8 +107,15 @@ def table_has_header_row(rows: list[list[str]]) -> bool:
 
 
 NUMBER = re.compile(r"[-+]?[\d.,%$]+")
+# Titles PowerPoint and its templates fill in by themselves; they name no document
+DEFAULT_TITLE = re.compile(r"(powerpoint )?presentation ?\d*", re.IGNORECASE)
 # Common English words that are not also common words in other languages
 ENGLISH_WORDS = {"the", "and", "of", "to", "is", "for", "that", "with", "are", "this"}
+
+
+def is_default_title(title: str) -> bool:
+    # "PowerPoint Presentation" and the like: a screen reader would announce it as the name
+    return bool(DEFAULT_TITLE.fullmatch(" ".join(title.split())))
 
 
 def guess_language(texts: list[str]) -> str | None:

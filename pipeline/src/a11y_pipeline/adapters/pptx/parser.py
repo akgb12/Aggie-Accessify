@@ -16,6 +16,7 @@ from a11y_pipeline.adapters.pptx.structure import (
     BoxKind,
     analyze_layout,
     guess_language,
+    is_default_title,
     table_has_header_row,
     title_can_move_first,
 )
@@ -111,8 +112,10 @@ def parse(bundle: Bundle) -> DocumentIR:
         containers.append(container)
     issues.extend(_duplicate_title_issues(containers, elements))
     core = presentation.core_properties
+    title = (core.title or "").strip()
     metadata = {
-        "title": (core.title or "").strip(),
+        # A default title names nothing, so it is treated as missing and replaced
+        "title": "" if is_default_title(title) else title,
         "language": (core.language or "").strip(),
         "slide_count": str(len(containers)),
     }

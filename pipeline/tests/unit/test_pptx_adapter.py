@@ -206,6 +206,26 @@ def test_an_empty_document_title_is_filled_from_the_first_slide(
     )
 
 
+def test_a_default_document_title_is_replaced_and_a_real_one_kept(tmp_path: Path) -> None:
+    for existing, expected in (
+        ("PowerPoint Presentation", "Gradient descent"),
+        ("Presentation1", "Gradient descent"),
+        ("CSCE 625 Lecture 2", "CSCE 625 Lecture 2"),
+    ):
+        root = tmp_path / existing.replace(" ", "_")
+        root.mkdir()
+        deck = _build_deck(root)
+        presentation = Presentation(str(deck))
+        presentation.core_properties.title = existing
+        presentation.save(str(deck))
+        bundle, adapter, ir = _ir(root)
+        written = adapter.write_back(
+            bundle, ir, root / "out", root / "changes.diff", root / "v", None, 60
+        )
+        title = Presentation(str(written.project_root / "deck.pptx")).core_properties.title
+        assert title == expected
+
+
 def test_prepare_sends_picture_pixels_and_skips_unrenderable_shapes(
     deck_root: Path, tmp_path: Path
 ) -> None:
