@@ -274,6 +274,8 @@ def _materialize_pptx_run(folder: RunFolder, state: RunState, input_path: Path) 
     )
     deck = written.project_root / state.bundle.main_file
     shutil.copy2(deck, folder.output_dir / "updated.pptx")
+    # The list of changes is plain text, so it is offered as a file any computer opens
+    shutil.copy2(folder.output_dir / "changes.diff", folder.output_dir / "changes.txt")
     archive_project(written.project_root, folder.output_dir / "updated_project.zip")
     pdf_made, pdf_issues = _export_pptx_pdf(deck, folder.output_dir / "tagged.pdf")
     pages: list[dict[str, Any]] = []
@@ -355,10 +357,11 @@ def _export_pptx_pdf(deck: Path, destination: Path) -> tuple[bool, list[Issue]]:
 
 def _pptx_outputs(pdf_made: bool = False) -> list[dict[str, str]]:
     # What a person can download from a finished PowerPoint run
+    # Both files are accessible, so each is named by its format, not by how it is made
     outputs = [{"label": "Accessible PowerPoint (.pptx)", "path": "output/updated.pptx"}]
     if pdf_made:
-        outputs.append({"label": "Accessible PDF (tagged)", "path": "output/tagged.pdf"})
-    outputs.append({"label": "Changes", "path": "output/changes.diff"})
+        outputs.append({"label": "Accessible PDF (.pdf)", "path": "output/tagged.pdf"})
+    outputs.append({"label": "Changes (Text File)", "path": "output/changes.txt"})
     return outputs
 
 

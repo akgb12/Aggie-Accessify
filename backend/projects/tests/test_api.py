@@ -478,6 +478,9 @@ def test_powerpoint_run_returns_an_updated_deck(client: Client) -> None:
     assert {"label": "Accessible PowerPoint (.pptx)", "path": "output/updated.pptx"} in review[
         "outputs"
     ]
+    assert {"label": "Changes (Text File)", "path": "output/changes.txt"} in review["outputs"]
+    changes = client.get(f"/api/runs/{run.id}/artifact/output/changes.txt")
+    assert changes.status_code == 200
     figure = next(e for e in review["elements"] if e["type"] == "figure")
     assert figure["alt"]
     assert figure["image_url"]

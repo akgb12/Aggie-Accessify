@@ -22,6 +22,7 @@ DOWNLOADABLE_ARTIFACTS = {
     "output/updated_project.zip",
     "output/updated.pptx",
     "output/changes.diff",
+    "output/changes.txt",
     "report.html",
 }
 # What a finished Beamer run offers; PowerPoint runs list their own outputs in the manifest
