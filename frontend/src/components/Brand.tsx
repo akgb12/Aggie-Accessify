@@ -1,16 +1,13 @@
+import { Accessibility } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { cx } from './classes'
 
-// The product monogram: two A's for Aggie Accessify (not the university's trademarked box logo)
+// Placeholder product mark until there is a real logo: the accessibility figure on maroon
 export function BrandMark({ className }: { className?: string }) {
   return (
-    <svg aria-hidden viewBox="0 0 32 32" className={cx('shrink-0', className)}>
-      <rect width="32" height="32" rx="6" fill="#500000" />
-      <path
-        fill="#fff"
-        d="M9.6 8h3.2l4.4 16h-3.1l-1-3.8H8.5L7.5 24H4.4zm-.4 9.5h3.7L11 10.6zM21.6 8h3.2l4.4 16h-3.1l-1-3.8h-4.6l-1 3.8h-3.1zm-.4 9.5h3.7l-1.9-6.9z"
-      />
-    </svg>
+    <span aria-hidden className={cx('flex shrink-0 items-center justify-center rounded-md bg-brand-800', className)}>
+      <Accessibility className="h-3/5 w-3/5 text-white" strokeWidth={2} />
+    </span>
   )
 }
 
