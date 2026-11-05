@@ -96,14 +96,16 @@ class DiskModelCache:
 
 
 class CachedModelClient:
-    def __init__(self, client: ModelClient, cache: DiskModelCache) -> None:
-        # Store the wrapped client and disk cache
+    def __init__(self, client: ModelClient, cache: DiskModelCache, reuse: bool = True) -> None:
+        # Store the wrapped client and disk cache; without reuse every request goes to the
+        # model and its answer replaces the stored one
         self.client = client
         self.cache = cache
+        self.reuse = reuse
 
     def complete_structured(self, request: ModelRequest) -> ModelResponse:
         # Serve a cache hit or store a fresh model response
-        cached_response = self.cache.get(request)
+        cached_response = self.cache.get(request) if self.reuse else None
         if cached_response is not None:
             return cached_response
         response = self.client.complete_structured(request)

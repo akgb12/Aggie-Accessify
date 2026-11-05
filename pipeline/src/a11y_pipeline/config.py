@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     model_output_usd_per_mtok: float | None = None
     model_max_output_tokens: int = 1000
     model_cache_dir: Path = Path(".cache/model_responses")
+    # Reuse earlier model answers to identical requests, so running a deck again costs
+    # only what changed
+    use_model_cache: bool = True
     run_dollar_cap_low: float = 0.50
     run_dollar_cap_medium: float = 1.50
     run_dollar_cap_high: float = 3.00

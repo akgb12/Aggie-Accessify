@@ -14,6 +14,7 @@ from a11y_pipeline.capabilities.base import (
 from a11y_pipeline.config import Settings
 from a11y_pipeline.ir.serialize import dumps_document
 from a11y_pipeline.models.anthropic_client import AnthropicModelClient
+from a11y_pipeline.models.cache import CachedModelClient, DiskModelCache
 from a11y_pipeline.models.client import ModelClient, ModelRequest, ScriptValue
 from a11y_pipeline.models.fake import FakeModelClient
 from a11y_pipeline.runs.folder import CompletedRun, RunBlockedError, run_to_folder
@@ -43,6 +44,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run.add_argument("--seed-weak", dest="seed_weak")
     run.add_argument("--out", type=Path)
+    run.add_argument(
+        "--fresh",
+        action="store_true",
+        help="Ask the model again instead of reusing earlier answers",
+    )
     return parser
 
 
@@ -97,7 +103,7 @@ def _parse_command(arguments: argparse.Namespace) -> int:
 def _run_command(arguments: argparse.Namespace) -> int:
     # Run remediation with the configured guarded model provider
     settings = Settings()
-    client = _model_client(settings)
+    client = _model_client(settings, fresh=arguments.fresh)
     output_root = arguments.out
     if output_root is None:
         output_root = settings.runs_dir
@@ -121,11 +127,15 @@ def _run_command(arguments: argparse.Namespace) -> int:
     return 0
 
 
-def _model_client(settings: Settings) -> ModelClient:
-    # Construct only the provider selected by validated settings
+def _model_client(settings: Settings, fresh: bool = False) -> ModelClient:
+    # Construct only the provider selected by validated settings. Real model answers are kept
+    # on disk, so a deck run again pays only for requests that changed; fresh asks again.
     if settings.model_provider == "fake":
         return FakeModelClient(default_generator=_good_fake_response)
-    return AnthropicModelClient(settings)
+    client = AnthropicModelClient(settings)
+    if not settings.use_model_cache:
+        return client
+    return CachedModelClient(client, DiskModelCache(settings.model_cache_dir), reuse=not fresh)
 
 
 def _good_fake_response(request: ModelRequest) -> ScriptValue:
