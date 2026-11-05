@@ -11,14 +11,12 @@ from typing import Any
 from uuid import uuid4
 
 from a11y_pipeline.adapters import get_adapter
-from a11y_pipeline.adapters.pptx.tagged_pdf import export_tagged_pdf
 from a11y_pipeline.capabilities.figure_description import PROMPT_VERSION
 from a11y_pipeline.capabilities.quote_check import QUOTE_PROMPT_VERSION
 from a11y_pipeline.capabilities.slide_title import TITLE_PROMPT_VERSION
 from a11y_pipeline.capabilities.text_inventory import INVENTORY_PROMPT_VERSION
 from a11y_pipeline.config import Settings
 from a11y_pipeline.evaluation.pdf_checks import check_pdf
-from a11y_pipeline.evaluation.verapdf import run_verapdf
 from a11y_pipeline.ir.models import Candidate, Issue
 from a11y_pipeline.ir.serialize import write_document
 from a11y_pipeline.models.client import ModelClient
@@ -31,6 +29,7 @@ from a11y_pipeline.render.visibility import element_visible_pages
 from a11y_pipeline.report.html import write_html_report
 from a11y_pipeline.report.stats import ReportStats, build_report_stats
 from a11y_pipeline.runs.manifest import build_manifest, write_manifest
+from a11y_pipeline.runs.outputs import OUTPUTS_VERSION, write_pptx_outputs
 from a11y_pipeline.synthesis.tagger import tag_pdf
 
 RUN_ID_PATTERN = re.compile(r"^\d{8}-\d{6}-[0-9a-f]{8}$")
@@ -254,6 +253,7 @@ def _materialize_completed_run(
         [PROMPT_VERSION],
         _page_records(tagged_path, page_images, thumbnails, folder.root),
     )
+    manifest["outputs_version"] = OUTPUTS_VERSION
     write_manifest(folder.manifest_path, manifest)
     return CompletedRun(folder=folder, state=state, stats=stats)
 
@@ -274,10 +274,8 @@ def _materialize_pptx_run(folder: RunFolder, state: RunState, input_path: Path) 
     )
     deck = written.project_root / state.bundle.main_file
     shutil.copy2(deck, folder.output_dir / "updated.pptx")
-    # The list of changes is plain text, so it is offered as a file any computer opens
-    shutil.copy2(folder.output_dir / "changes.diff", folder.output_dir / "changes.txt")
     archive_project(written.project_root, folder.output_dir / "updated_project.zip")
-    pdf_made, pdf_issues = _export_pptx_pdf(deck, folder.output_dir / "tagged.pdf")
+    outputs, pdf_issues = write_pptx_outputs(folder.output_dir)
     pages: list[dict[str, Any]] = []
     page_images: list[Path] = []
     if state.original_pdf is not None:
@@ -309,7 +307,8 @@ def _materialize_pptx_run(folder: RunFolder, state: RunState, input_path: Path) 
         [PROMPT_VERSION, TITLE_PROMPT_VERSION, INVENTORY_PROMPT_VERSION, QUOTE_PROMPT_VERSION],
         pages,
     )
-    manifest["outputs"] = _pptx_outputs(pdf_made)
+    manifest["outputs"] = outputs
+    manifest["outputs_version"] = OUTPUTS_VERSION
     write_manifest(folder.manifest_path, manifest)
     return CompletedRun(folder=folder, state=state, stats=stats)
 
@@ -327,42 +326,6 @@ def _save_figure_images(folder: RunFolder, state: RunState) -> None:
         name = f"{element_id.replace('/', '-')}.png"
         (figures / name).write_bytes(capability_input.image_png)
         element.attrs["image"] = f"figures/{name}"
-
-
-def _export_pptx_pdf(deck: Path, destination: Path) -> tuple[bool, list[Issue]]:
-    # The tagged PDF is an extra download; when it cannot be made the deck is still returned
-    result = export_tagged_pdf(deck, destination)
-    if result.pdf is None:
-        return False, [
-            Issue(
-                element_id=None,
-                code="tagged_pdf_unavailable",
-                severity="warning",
-                message=f"No tagged PDF was made: {result.message}",
-            )
-        ]
-    check = run_verapdf(result.pdf)
-    if check.ran and not check.passed:
-        return True, [
-            Issue(
-                element_id=None,
-                code="tagged_pdf_not_compliant",
-                severity="warning",
-                message="veraPDF found parts of the tagged PDF that do not meet PDF/UA",
-                details={"pass_rate": check.pass_rate},
-            )
-        ]
-    return True, []
-
-
-def _pptx_outputs(pdf_made: bool = False) -> list[dict[str, str]]:
-    # What a person can download from a finished PowerPoint run
-    # Both files are accessible, so each is named by its format, not by how it is made
-    outputs = [{"label": "Accessible PowerPoint (.pptx)", "path": "output/updated.pptx"}]
-    if pdf_made:
-        outputs.append({"label": "Accessible PDF (.pdf)", "path": "output/tagged.pdf"})
-    outputs.append({"label": "Changes (Text File)", "path": "output/changes.txt"})
-    return outputs
 
 
 def _page_records(
