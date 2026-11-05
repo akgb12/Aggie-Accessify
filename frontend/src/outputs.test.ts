@@ -6,6 +6,7 @@ describe('outputKind', () => {
     expect(outputKind('output/updated.pptx')).toBe('deck')
     expect(outputKind('output/tagged.pdf')).toBe('pdf')
     expect(outputKind('output/changes.diff')).toBe('changes')
+    expect(outputKind('output/changes.txt')).toBe('changes')
     expect(outputKind('output/updated_project.zip')).toBe('archive')
     expect(outputKind('report.html')).toBe('report')
     expect(outputKind('output/notes.txt')).toBe('other')
@@ -14,7 +15,7 @@ describe('outputKind', () => {
 
 describe('outputHint', () => {
   it('says when to choose each download', () => {
-    expect(outputHint('output/tagged.pdf')).toBe('Tagged for screen readers, ready to share')
+    expect(outputHint('output/tagged.pdf')).toBe('Ready to share or post to Canvas')
     expect(outputHint('output/notes.txt')).toBeNull()
   })
 })

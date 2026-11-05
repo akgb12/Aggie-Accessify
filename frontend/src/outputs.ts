@@ -5,7 +5,7 @@ export function outputKind(path: string): OutputKind {
   const lower = path.toLowerCase()
   if (lower.endsWith('.pptx')) return 'deck'
   if (lower.endsWith('.pdf')) return 'pdf'
-  if (lower.endsWith('.diff')) return 'changes'
+  if (lower.endsWith('.diff') || (lower.endsWith('.txt') && lower.includes('changes'))) return 'changes'
   if (lower.endsWith('.zip')) return 'archive'
   if (lower.endsWith('.html')) return 'report'
   return 'other'
@@ -13,7 +13,7 @@ export function outputKind(path: string): OutputKind {
 
 const HINTS: Record<OutputKind, string | null> = {
   deck: 'Keep editing in PowerPoint',
-  pdf: 'Tagged for screen readers, ready to share',
+  pdf: 'Ready to share or post to Canvas',
   changes: 'Every description and fix, slide by slide',
   archive: 'All the updated source files',
   report: 'The full accessibility report',
