@@ -275,6 +275,10 @@ def test_a_full_run_returns_an_updated_deck(deck_root: Path, tmp_path: Path) -> 
     assert completed.stats.fidelity.value == 100.0
     manifest = (completed.folder.manifest_path).read_text(encoding="utf-8")
     assert "output/updated.pptx" in manifest
+    # With LibreOffice installed the run also offers a tagged PDF of the updated deck
+    if find_soffice() is not None:
+        assert (output / "tagged.pdf").is_file()
+        assert "output/tagged.pdf" in manifest
 
 
 def test_a_picture_the_describer_judges_decorative_is_marked_decorative(

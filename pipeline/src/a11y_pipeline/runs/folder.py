@@ -11,12 +11,14 @@ from typing import Any
 from uuid import uuid4
 
 from a11y_pipeline.adapters import get_adapter
+from a11y_pipeline.adapters.pptx.tagged_pdf import export_tagged_pdf
 from a11y_pipeline.capabilities.figure_description import PROMPT_VERSION
 from a11y_pipeline.capabilities.quote_check import QUOTE_PROMPT_VERSION
 from a11y_pipeline.capabilities.slide_title import TITLE_PROMPT_VERSION
 from a11y_pipeline.capabilities.text_inventory import INVENTORY_PROMPT_VERSION
 from a11y_pipeline.config import Settings
 from a11y_pipeline.evaluation.pdf_checks import check_pdf
+from a11y_pipeline.evaluation.verapdf import run_verapdf
 from a11y_pipeline.ir.models import Candidate, Issue
 from a11y_pipeline.ir.serialize import write_document
 from a11y_pipeline.models.client import ModelClient
@@ -257,7 +259,7 @@ def _materialize_completed_run(
 
 
 def _materialize_pptx_run(folder: RunFolder, state: RunState, input_path: Path) -> CompletedRun:
-    # A PowerPoint run returns the updated .pptx; PowerPoint itself makes the tagged PDF from it
+    # A PowerPoint run returns the updated .pptx and a tagged PDF made from it
     if state.bundle is None or state.final_ir is None:
         raise ValueError("Completed run state is missing its bundle or final IR")
     adapter = get_adapter(state.adapter_name)
@@ -273,6 +275,7 @@ def _materialize_pptx_run(folder: RunFolder, state: RunState, input_path: Path) 
     deck = written.project_root / state.bundle.main_file
     shutil.copy2(deck, folder.output_dir / "updated.pptx")
     archive_project(written.project_root, folder.output_dir / "updated_project.zip")
+    pdf_made, pdf_issues = _export_pptx_pdf(deck, folder.output_dir / "tagged.pdf")
     pages: list[dict[str, Any]] = []
     page_images: list[Path] = []
     if state.original_pdf is not None:
@@ -283,7 +286,7 @@ def _materialize_pptx_run(folder: RunFolder, state: RunState, input_path: Path) 
     for element in state.final_ir.elements.values():
         element.attrs["visible_pages"] = list(element.render.pages)
     selected = _selected_candidate(state)
-    combined_issues = _combined_issues(state, selected, list(written.issues))
+    combined_issues = _combined_issues(state, selected, [*written.issues, *pdf_issues])
     state.issues = combined_issues
     state.final_ir.issues = combined_issues
     stats = build_report_stats(
@@ -304,7 +307,7 @@ def _materialize_pptx_run(folder: RunFolder, state: RunState, input_path: Path) 
         [PROMPT_VERSION, TITLE_PROMPT_VERSION, INVENTORY_PROMPT_VERSION, QUOTE_PROMPT_VERSION],
         pages,
     )
-    manifest["outputs"] = _pptx_outputs()
+    manifest["outputs"] = _pptx_outputs(pdf_made)
     write_manifest(folder.manifest_path, manifest)
     return CompletedRun(folder=folder, state=state, stats=stats)
 
@@ -324,12 +327,39 @@ def _save_figure_images(folder: RunFolder, state: RunState) -> None:
         element.attrs["image"] = f"figures/{name}"
 
 
-def _pptx_outputs() -> list[dict[str, str]]:
+def _export_pptx_pdf(deck: Path, destination: Path) -> tuple[bool, list[Issue]]:
+    # The tagged PDF is an extra download; when it cannot be made the deck is still returned
+    result = export_tagged_pdf(deck, destination)
+    if result.pdf is None:
+        return False, [
+            Issue(
+                element_id=None,
+                code="tagged_pdf_unavailable",
+                severity="warning",
+                message=f"No tagged PDF was made: {result.message}",
+            )
+        ]
+    check = run_verapdf(result.pdf)
+    if check.ran and not check.passed:
+        return True, [
+            Issue(
+                element_id=None,
+                code="tagged_pdf_not_compliant",
+                severity="warning",
+                message="veraPDF found parts of the tagged PDF that do not meet PDF/UA",
+                details={"pass_rate": check.pass_rate},
+            )
+        ]
+    return True, []
+
+
+def _pptx_outputs(pdf_made: bool = False) -> list[dict[str, str]]:
     # What a person can download from a finished PowerPoint run
-    return [
-        {"label": "Accessible PowerPoint (.pptx)", "path": "output/updated.pptx"},
-        {"label": "Changes", "path": "output/changes.diff"},
-    ]
+    outputs = [{"label": "Accessible PowerPoint (.pptx)", "path": "output/updated.pptx"}]
+    if pdf_made:
+        outputs.append({"label": "Accessible PDF (tagged)", "path": "output/tagged.pdf"})
+    outputs.append({"label": "Changes", "path": "output/changes.diff"})
+    return outputs
 
 
 def _page_records(
