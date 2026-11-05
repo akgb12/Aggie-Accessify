@@ -336,7 +336,7 @@ def _edit_slide(
         shape = by_id.get(shape_id)
         properties = _shape_properties(shape) if shape is not None else None
         if properties is not None:
-            _mark_decorative(properties)
+            mark_decorative(properties)
     for shape_id in edits.header_tables:
         shape = by_id.get(shape_id)
         if shape is None:
@@ -372,7 +372,7 @@ def _shape_properties(shape: etree._Element) -> etree._Element | None:
     return first.find(f"{{{P_NS}}}cNvPr")
 
 
-def _mark_decorative(properties: etree._Element) -> None:
+def mark_decorative(properties: etree._Element) -> None:
     # PowerPoint's "Mark as decorative": an extension on the shape's properties
     for extension in properties.iter(f"{{{A_NS}}}ext"):
         if extension.get("uri") == DECORATIVE_URI:

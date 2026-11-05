@@ -10,8 +10,13 @@ import pikepdf
 from lxml import etree
 
 from a11y_pipeline.adapters.pptx.render import RENDER_TIMEOUT_SECONDS, find_soffice
+from a11y_pipeline.adapters.pptx.writer import (
+    A_NS,
+    DECORATIVE_URI,
+    P_NS,
+    mark_decorative,
+)
 
-P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 # Tagged, PDF/UA, no hidden slides and no notes pages: what PowerPoint's own Save as PDF gives
 TAGGED_PDF_FILTER = (
     'pdf:impress_pdf_Export:{"UseTaggedPDF":{"type":"boolean","value":"true"},'
@@ -22,6 +27,8 @@ TAGGED_PDF_FILTER = (
 PATH_OPERATORS = {"m", "l", "c", "v", "y", "re", "h"}
 PAINT_OPERATORS = {"S", "s", "f", "F", "f*", "B", "B*", "b", "b*"}
 CLIP_OPERATORS = {"W", "W*", "n"}
+# Operators that only set up how the next thing is drawn
+STATE_OPERATORS = {"q", "gs", "cm", "w", "J", "j", "M", "d", "ri", "i", "rg", "RG", "g", "G"}
 
 
 @dataclass(frozen=True)
@@ -65,15 +72,16 @@ def export_tagged_pdf(deck: Path, destination: Path) -> TaggedPdfResult:
 
 
 def prepare_deck_for_pdf(deck: Path, destination: Path) -> int:
-    # LibreOffice drops the description of a connector line, so a described connector is
-    # written as a plain line shape in the copy that is exported; it looks the same
+    # LibreOffice drops the description of a group and of a connector line. In the copy that
+    # is exported, a group's description moves to its first drawn shape (the rest of its
+    # drawing is decorative) and a described connector becomes a plain line; both look the same
     converted = 0
     with zipfile.ZipFile(deck) as source, zipfile.ZipFile(destination, "w") as target:
         for item in source.infolist():
             data = source.read(item.filename)
             if item.filename.startswith("ppt/slides/slide") and item.filename.endswith(".xml"):
                 root = etree.fromstring(data)
-                changed = _connectors_to_shapes(root)
+                changed = _groups_to_carriers(root) + _connectors_to_shapes(root)
                 if changed:
                     converted += changed
                     data = etree.tostring(
@@ -81,6 +89,58 @@ def prepare_deck_for_pdf(deck: Path, destination: Path) -> int:
                     )
             target.writestr(item, data, compress_type=item.compress_type)
     return converted
+
+
+def _groups_to_carriers(root: etree._Element) -> int:
+    changed = 0
+    for group in list(root.iter(f"{{{P_NS}}}grpSp")):
+        properties = _properties(group)
+        description = (properties.get("descr") or "").strip() if properties is not None else ""
+        if not description:
+            continue
+        # Shapes with words stay readable text; only the drawing carries the description
+        drawn = [
+            shape
+            for shape in _leaf_shapes(group)
+            if not _has_text(shape) and not _is_decorative(_properties(shape))
+        ]
+        if not drawn:
+            continue
+        carrier = _properties(drawn[0])
+        if carrier is not None:
+            carrier.set("descr", description)
+        for shape in drawn[1:]:
+            shape_properties = _properties(shape)
+            if shape_properties is not None:
+                mark_decorative(shape_properties)
+        changed += 1
+    return changed
+
+
+def _properties(shape: etree._Element) -> etree._Element | None:
+    # The cNvPr of any kind of shape: its first child holds the non-visual properties
+    return shape.find(f"./*[1]/{{{P_NS}}}cNvPr")
+
+
+def _leaf_shapes(group: etree._Element) -> list[etree._Element]:
+    shapes: list[etree._Element] = []
+    for child in group:
+        name = etree.QName(child).localname
+        if name == "grpSp":
+            shapes.extend(_leaf_shapes(child))
+        elif name in {"sp", "pic", "cxnSp", "graphicFrame"}:
+            shapes.append(child)
+    return shapes
+
+
+def _has_text(shape: etree._Element) -> bool:
+    return any((run.text or "").strip() for run in shape.iter(f"{{{A_NS}}}t"))
+
+
+def _is_decorative(properties: etree._Element | None) -> bool:
+    if properties is None:
+        return False
+    return any(ext.get("uri") == DECORATIVE_URI for ext in properties.iter(f"{{{A_NS}}}ext"))
 
 
 def _connectors_to_shapes(root: etree._Element) -> int:
@@ -104,14 +164,200 @@ def _connectors_to_shapes(root: etree._Element) -> int:
 
 
 def repair_tags(path: Path) -> TaggedPdfResult:
-    # Fix what LibreOffice's export leaves out of PDF/UA: untagged backgrounds, list items
-    # outside a list, and links without a description
+    # Fix what LibreOffice's export leaves out of PDF/UA: tags split across a drawing object,
+    # untagged backgrounds, list items outside a list, and links without a description
     with pikepdf.open(path, allow_overwriting_input=True) as pdf:
+        lifted: dict[Any, list[Any]] = {}
+        for page in pdf.pages:
+            _lift_open_tags_from_forms(pdf, page, lifted)
         artifacts = sum(_mark_untagged_as_artifacts(pdf, page) for page in pdf.pages)
-        lists = _wrap_loose_list_items(pdf)
+        lists = _wrap_loose_list_items(pdf) + _move_links_inside_list_bodies(pdf)
+        _retag_text_figures(pdf)
+        _tag_untagged_links(pdf)
         links = _describe_links(pdf)
         pdf.save(path)
     return TaggedPdfResult(path, "Tagged PDF written", artifacts, lists, links)
+
+
+def _structure_elements(pdf: pikepdf.Pdf) -> list[pikepdf.Dictionary]:
+    # Every structure element, parents before children
+    root = pdf.Root.get("/StructTreeRoot")
+    found: list[pikepdf.Dictionary] = []
+    pending = [root] if root is not None else []
+    while pending:
+        node = pending.pop(0)
+        kids = node.get("/K")
+        children = list(kids) if isinstance(kids, pikepdf.Array) else [kids]
+        for kid in children:
+            if isinstance(kid, pikepdf.Dictionary) and "/S" in kid:
+                found.append(kid)
+                pending.append(kid)
+    return found
+
+
+def _kids(node: pikepdf.Dictionary) -> list[Any]:
+    kids = node.get("/K")
+    if kids is None:
+        return []
+    return list(kids) if isinstance(kids, pikepdf.Array) else [kids]
+
+
+def _retag_text_figures(pdf: pikepdf.Pdf) -> int:
+    # A group of text boxes comes out as a figure holding paragraphs and no description; it
+    # is text a screen reader should read, so it becomes a plain group
+    retagged = 0
+    for node in _structure_elements(pdf):
+        if node.get("/S") != pikepdf.Name.Figure or "/Alt" in node or "/ActualText" in node:
+            continue
+        if any(isinstance(kid, pikepdf.Dictionary) and "/S" in kid for kid in _kids(node)):
+            node.S = pikepdf.Name.Div
+            retagged += 1
+    return retagged
+
+
+def _move_links_inside_list_bodies(pdf: pikepdf.Pdf) -> int:
+    # A bullet that is all link comes out as item > link > body; lists need item > body > link
+    moved = 0
+    owners: dict[Any, pikepdf.Dictionary] = {}
+    for item in _structure_elements(pdf):
+        if item.get("/S") != pikepdf.Name.LI:
+            continue
+        children = _kids(item)
+        for position, link in enumerate(children):
+            if not isinstance(link, pikepdf.Dictionary) or link.get("/S") != pikepdf.Name.Link:
+                continue
+            bodies = [kid for kid in _kids(link) if _role(kid) == pikepdf.Name.LBody]
+            if len(bodies) != 1:
+                continue
+            body = bodies[0]
+            others = [kid for kid in _kids(link) if kid is not body and _role(kid) is None]
+            content = _kids(body)
+            for kid in content:
+                if isinstance(kid, pikepdf.Dictionary) and "/S" in kid:
+                    kid.P = link
+            link.K = pikepdf.Array([*content, *others])
+            link.P = body
+            body.K = pikepdf.Array([link])
+            body.P = item
+            children[position] = body
+            item.K = pikepdf.Array(children)
+            owners[body.objgen] = link
+            moved += 1
+    if owners:
+        _replace_parent_tree_owners(pdf, owners)
+    return moved
+
+
+def _tag_untagged_links(pdf: pikepdf.Pdf) -> int:
+    # A link on a shape rather than on text is left out of the structure; it gets a Link tag
+    # after the rest of its slide, so a screen reader reaches it
+    root = pdf.Root.get("/StructTreeRoot")
+    if root is None:
+        return 0
+    parent_tree = pikepdf.NumberTree(root.ParentTree) if "/ParentTree" in root else None
+    if parent_tree is None:
+        return 0
+    next_key = int(root.get("/ParentTreeNextKey", 0))
+    next_key = max([next_key, *(int(key) + 1 for key, _ in parent_tree.items())])
+    top = _kids(root)
+    added = 0
+    for page in pdf.pages:
+        for annotation in page.obj.get("/Annots", []):
+            if annotation.get("/Subtype") != pikepdf.Name.Link or "/StructParent" in annotation:
+                continue
+            reference = pikepdf.Dictionary(Type=pikepdf.Name.OBJR, Obj=annotation, Pg=page.obj)
+            link = pdf.make_indirect(
+                pikepdf.Dictionary(
+                    Type=pikepdf.Name.StructElem,
+                    S=pikepdf.Name.Link,
+                    P=root,
+                    Pg=page.obj,
+                    K=pikepdf.Array([reference]),
+                )
+            )
+            on_page = [
+                index
+                for index, kid in enumerate(top)
+                if isinstance(kid, pikepdf.Dictionary) and kid.get("/Pg") == page.obj
+            ]
+            top.insert(on_page[-1] + 1 if on_page else len(top), link)
+            parent_tree[next_key] = link
+            annotation.StructParent = next_key
+            next_key += 1
+            added += 1
+    if added:
+        root.K = pikepdf.Array(top)
+        root.ParentTreeNextKey = next_key
+    return added
+
+
+def _role(node: Any) -> Any:
+    return node.get("/S") if isinstance(node, pikepdf.Dictionary) else None
+
+
+def _replace_parent_tree_owners(pdf: pikepdf.Pdf, owners: dict[Any, pikepdf.Dictionary]) -> None:
+    # Content that moved from one element to another must point at its new owner
+    tree = pdf.Root.StructTreeRoot.get("/ParentTree")
+    pending = [tree] if tree is not None else []
+    while pending:
+        node = pending.pop()
+        pending.extend(node.get("/Kids", []))
+        numbers = node.get("/Nums", [])
+        for index in range(1, len(numbers), 2):
+            value = numbers[index]
+            if isinstance(value, pikepdf.Array):
+                for position, owner in enumerate(value):
+                    if isinstance(owner, pikepdf.Dictionary) and owner.objgen in owners:
+                        value[position] = owners[owner.objgen]
+            elif isinstance(value, pikepdf.Dictionary) and value.objgen in owners:
+                numbers[index] = owners[value.objgen]
+
+
+def _lift_open_tags_from_forms(
+    pdf: pikepdf.Pdf, page: pikepdf.Page, lifted: dict[Any, list[Any]]
+) -> None:
+    # Transparent text is drawn through a form that opens its tag inside the form while the
+    # page closes it, so the text counts as untagged. The opening moves onto the page, in
+    # front of the drawing of the form, where it wraps the whole form.
+    instructions = list(pikepdf.parse_content_stream(page))
+    xobjects = page.obj.get("/Resources", {}).get("/XObject", {})
+    output: list[Any] = []
+    changed = False
+    for instruction in instructions:
+        if str(instruction.operator) == "Do" and instruction.operands:
+            form = xobjects.get(str(instruction.operands[0]))
+            openers = _form_openers(pdf, form, lifted) if form is not None else []
+            if openers:
+                start = len(output)
+                while start > 0 and str(output[start - 1].operator) in STATE_OPERATORS:
+                    start -= 1
+                output[start:start] = openers
+                changed = True
+        output.append(instruction)
+    if changed:
+        page.obj.Contents = pdf.make_stream(pikepdf.unparse_content_stream(output))
+
+
+def _form_openers(pdf: pikepdf.Pdf, form: Any, lifted: dict[Any, list[Any]]) -> list[Any]:
+    # The tags a form opens before drawing anything and never closes, taken out of the form
+    if form.get("/Subtype") != pikepdf.Name.Form:
+        return []
+    if form.objgen in lifted:
+        return lifted[form.objgen]
+    instructions = list(pikepdf.parse_content_stream(form))
+    leading = 0
+    while leading < len(instructions) and str(instructions[leading].operator) in {"BMC", "BDC"}:
+        leading += 1
+    balance = sum(
+        {"BMC": 1, "BDC": 1, "EMC": -1}.get(str(instruction.operator), 0)
+        for instruction in instructions
+    )
+    count = min(leading, balance)
+    openers = instructions[:count] if count > 0 else []
+    if openers:
+        form.write(pikepdf.unparse_content_stream(instructions[count:]))
+    lifted[form.objgen] = openers
+    return openers
 
 
 def _mark_untagged_as_artifacts(pdf: pikepdf.Pdf, page: pikepdf.Page) -> int:
@@ -180,8 +426,13 @@ def _form_is_tagged(page: pikepdf.Page, operands: Any) -> bool:
     target = xobjects.get(str(operands[0])) if operands else None
     if target is None or target.get("/Subtype") != pikepdf.Name.Form:
         return False
+    # Only a tag with a content ID links into the structure; a bare span does not
     return any(
-        str(instruction.operator) == "BDC" for instruction in pikepdf.parse_content_stream(target)
+        str(instruction.operator) == "BDC"
+        and len(instruction.operands) > 1
+        and isinstance(instruction.operands[1], pikepdf.Dictionary)
+        and "/MCID" in instruction.operands[1]
+        for instruction in pikepdf.parse_content_stream(target)
     )
 
 

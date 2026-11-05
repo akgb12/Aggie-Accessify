@@ -128,3 +128,84 @@ def test_a_deck_exports_as_a_tagged_pdf_that_keeps_the_connector_description(
             children = list(kids) if isinstance(kids, pikepdf.Array) else [kids]
             pending.extend(kid for kid in children if isinstance(kid, pikepdf.Dictionary))
         assert "Percepts flow in" in figures
+
+
+def test_a_described_group_hands_its_description_to_its_first_drawn_shape(
+    tmp_path: Path,
+) -> None:
+    presentation = Presentation()
+    slide = presentation.slides.add_slide(presentation.slide_layouts[TITLE_ONLY])
+    group = slide.shapes.add_group_shape()
+    labelled = group.shapes.add_shape(1, Inches(1), Inches(2), Inches(2), Inches(1))
+    labelled.text_frame.text = "Input"
+    group.shapes.add_shape(1, Inches(4), Inches(2), Inches(1), Inches(1))
+    group.shapes.add_shape(1, Inches(6), Inches(2), Inches(1), Inches(1))
+    group._element.xpath("./p:nvGrpSpPr/p:cNvPr")[0].set("descr", "Input flows to two stages")
+    deck = tmp_path / "deck.pptx"
+    presentation.save(str(deck))
+    prepared = tmp_path / "prepared.pptx"
+    assert prepare_deck_for_pdf(deck, prepared) == 1
+    shapes = _slide_root(prepared).findall(f".//{{{P_NS}}}grpSp/{{{P_NS}}}sp")
+    descriptions = [
+        shape.find(f"./{{{P_NS}}}nvSpPr/{{{P_NS}}}cNvPr").get("descr") for shape in shapes
+    ]
+    decorative = [bool(shape.xpath(".//*[local-name()='decorative']")) for shape in shapes]
+    # The labelled box stays readable text; the first plain box carries the description
+    assert descriptions == [None, "Input flows to two stages", None]
+    assert decorative == [False, False, True]
+
+
+def _struct(pdf: pikepdf.Pdf, role: str, **entries: object) -> pikepdf.Dictionary:
+    return pdf.make_indirect(
+        pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name(f"/{role}"), **entries)
+    )
+
+
+def test_a_tag_opened_inside_a_form_moves_onto_the_page(tmp_path: Path) -> None:
+    pdf = pikepdf.new()
+    pdf.add_blank_page(page_size=(200, 100))
+    page = pdf.pages[0]
+    form = pdf.make_stream(b"/LBody <</MCID 0>> BDC BT ET", Type=pikepdf.Name.XObject)
+    form.Subtype = pikepdf.Name.Form
+    form.BBox = pikepdf.Array([0, 0, 200, 100])
+    page.obj.Resources = pikepdf.Dictionary(XObject=pikepdf.Dictionary(Tr1=form))
+    page.obj.Contents = pdf.make_stream(b"q /Tr1 Do Q EMC")
+    path = tmp_path / "form.pdf"
+    pdf.save(path)
+    repair_tags(path)
+    with pikepdf.open(path) as repaired:
+        page_ops = [str(item.operator) for item in pikepdf.parse_content_stream(repaired.pages[0])]
+        assert page_ops == ["BDC", "q", "Do", "Q", "EMC"]
+        form_ops = pikepdf.parse_content_stream(repaired.pages[0].Resources.XObject.Tr1)
+        assert [str(item.operator) for item in form_ops] == ["BT", "ET"]
+
+
+def test_text_figures_become_groups_and_links_move_inside_list_bodies(tmp_path: Path) -> None:
+    pdf = pikepdf.new()
+    pdf.add_blank_page(page_size=(200, 100))
+    root = pdf.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructTreeRoot))
+    paragraph = _struct(pdf, "P", K=0)
+    figure = _struct(pdf, "Figure", P=root, K=pikepdf.Array([paragraph]))
+    paragraph.P = figure
+    body = _struct(pdf, "LBody", K=1)
+    link = _struct(pdf, "Link", K=pikepdf.Array([body]))
+    item = _struct(pdf, "LI", K=pikepdf.Array([link]))
+    listing = _struct(pdf, "L", P=root, K=pikepdf.Array([item]))
+    item.P, link.P, body.P = listing, item, link
+    root.K = pikepdf.Array([figure, listing])
+    root.ParentTree = pdf.make_indirect(
+        pikepdf.Dictionary(Nums=pikepdf.Array([0, pikepdf.Array([paragraph, body])]))
+    )
+    pdf.Root.StructTreeRoot = root
+    path = tmp_path / "structure.pdf"
+    pdf.save(path)
+    repair_tags(path)
+    with pikepdf.open(path) as repaired:
+        figure, listing = repaired.Root.StructTreeRoot.K
+        assert figure.S == pikepdf.Name.Div
+        body = listing.K[0].K[0]
+        assert body.S == pikepdf.Name.LBody
+        assert body.K[0].S == pikepdf.Name.Link
+        # The content now belongs to the link, and the parent tree says so
+        owners = repaired.Root.StructTreeRoot.ParentTree.Nums[1]
+        assert owners[1].objgen == body.K[0].objgen
