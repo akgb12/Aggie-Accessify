@@ -13,6 +13,14 @@ const WORDING: Record<string, IssueWording> = {
     title: 'Figure has no description',
     explanation: 'A screen reader has nothing to say for this figure yet.',
   },
+  tagged_pdf_unavailable: {
+    title: 'No PDF version was made',
+    explanation: 'The accessible PowerPoint is ready, but the PDF could not be exported from it.',
+  },
+  tagged_pdf_not_compliant: {
+    title: 'PDF version needs a check',
+    explanation: 'An automatic checker found parts of the PDF that do not fully meet the PDF/UA standard.',
+  },
   alt_low_coverage: {
     title: 'Description leaves out visible labels',
     explanation: 'The description does not mention enough of the text shown in the figure.',

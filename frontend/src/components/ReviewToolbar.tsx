@@ -1,16 +1,37 @@
-import { CircleCheck, Download, FileArchive, FileText, Info, PanelRight, TriangleAlert } from 'lucide-react'
+import {
+  CircleCheck,
+  Download,
+  FileArchive,
+  FileDiff,
+  FileText,
+  Info,
+  PanelRight,
+  Presentation,
+  TriangleAlert,
+} from 'lucide-react'
 import type { ReactNode } from 'react'
 import { artifactUrl } from '../api'
 import { formatCost } from '../format'
+import { outputHint, outputKind } from '../outputs'
 import type { ReviewOutput, Run } from '../types'
 import EditorToolbar, { PanelToggle } from './EditorToolbar'
 import Popover from './Popover'
 
 function outputIcon(path: string) {
-  const className = 'h-4 w-4 shrink-0 text-slate-600'
-  if (path.endsWith('.zip')) return <FileArchive aria-hidden className={className} />
-  if (path.endsWith('.html') || path.endsWith('.diff')) return <FileText aria-hidden className={className} />
-  return <Download aria-hidden className={className} />
+  const className = 'mt-0.5 h-4 w-4 shrink-0 text-slate-600'
+  switch (outputKind(path)) {
+    case 'deck':
+      return <Presentation aria-hidden className={className} />
+    case 'pdf':
+    case 'report':
+      return <FileText aria-hidden className={className} />
+    case 'changes':
+      return <FileDiff aria-hidden className={className} />
+    case 'archive':
+      return <FileArchive aria-hidden className={className} />
+    default:
+      return <Download aria-hidden className={className} />
+  }
 }
 
 function score(value: number | null): string {
@@ -94,20 +115,26 @@ export default function ReviewToolbar({
         label="Download"
         icon={<Download aria-hidden className="h-4 w-4" />}
         buttonClassName="bg-brand-800 text-white hover:bg-brand-700 data-[state=open]:bg-brand-900"
-        width="w-64"
+        width="w-72"
       >
         <ul className="-m-2">
-          {outputs.map((output) => (
-            <li key={output.path}>
-              <a
-                href={artifactUrl(run.id, output.path)}
-                className="flex items-center gap-2.5 rounded-md px-2 py-2 font-medium text-slate-800 hover:bg-slate-100"
-              >
-                {outputIcon(output.path)}
-                {output.label}
-              </a>
-            </li>
-          ))}
+          {outputs.map((output) => {
+            const hint = outputHint(output.path)
+            return (
+              <li key={output.path}>
+                <a
+                  href={artifactUrl(run.id, output.path)}
+                  className="flex items-start gap-2.5 rounded-md px-2 py-2 text-slate-800 hover:bg-slate-100"
+                >
+                  {outputIcon(output.path)}
+                  <span>
+                    <span className="block font-medium">{output.label}</span>
+                    {hint && <span className="block text-xs text-slate-600">{hint}</span>}
+                  </span>
+                </a>
+              </li>
+            )
+          })}
         </ul>
       </Popover>
       <PanelToggle label="Show or hide the details panel" pressed={rightOpen} onClick={onToggleRight}>
