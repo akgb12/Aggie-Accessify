@@ -26,6 +26,7 @@ from projects.services import (
     delete_project_completely,
     project_preflight,
     project_targets,
+    start_refresh_if_outdated,
 )
 from projects.storage import (
     delete_project_file,
@@ -241,6 +242,7 @@ def create_run(request, project_id: UUID, payload: RunCreateSchema):
         main_file=payload.main_file or "",
         seed_weak=payload.seed_weak,
         model_provider=provider,
+        fresh=payload.fresh,
     )
     run.storage_prefix = f"runs/{run.id}"
     run.save()
@@ -262,10 +264,13 @@ def get_run_review(request, run_id: UUID):
     run = _owned_run(request, run_id)
     if run.status != Run.Status.SUCCEEDED:
         raise HttpError(409, "Review is available after a run succeeds")
+    refreshing = start_refresh_if_outdated(run)
     try:
-        return build_review(run)
+        review = build_review(run)
     except (OSError, ValueError) as error:
         raise HttpError(404, "Review artifacts are unavailable") from error
+    review["refreshing"] = refreshing
+    return review
 
 
 @router.get("/runs/{run_id}/artifact/{path:relpath}")

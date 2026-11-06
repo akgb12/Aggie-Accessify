@@ -6,6 +6,7 @@ from django.core.files.storage import default_storage
 from a11y_pipeline.adapters import adapter_name_for, get_adapter
 from a11y_pipeline.bundle.bundle import Bundle
 from a11y_pipeline.bundle.mainfile import list_beamer_main_files, list_main_files
+from a11y_pipeline.runs.outputs import OUTPUTS_VERSION
 from projects.models import Project, Run
 from projects.storage import (
     delete_prefix,
@@ -16,6 +17,7 @@ from projects.storage import (
     scratch_dir,
     validate_relative_path,
 )
+from projects.tasks import refresh_run_outputs_task
 
 DOWNLOADABLE_ARTIFACTS = {
     "output/tagged.pdf",
@@ -141,6 +143,20 @@ def artifact_key(run: Run, relative_path: str) -> str:
     if not default_storage.exists(key):
         raise FileNotFoundError(relative)
     return key
+
+
+def start_refresh_if_outdated(run: Run) -> bool:
+    # An older run is brought up to date in the background the first time it is opened, so
+    # earlier work gains new downloads without running the model again. True while updating.
+    if run.status != Run.Status.SUCCEEDED or run.outputs_version >= OUTPUTS_VERSION:
+        return False
+    claimed = Run.objects.filter(
+        id=run.id, refreshing=False, outputs_version__lt=OUTPUTS_VERSION
+    ).update(refreshing=True)
+    if claimed:
+        refresh_run_outputs_task.enqueue(str(run.id))
+    run.refresh_from_db(fields=["refreshing", "outputs_version"])
+    return run.refreshing
 
 
 def build_review(run: Run) -> dict[str, object]:

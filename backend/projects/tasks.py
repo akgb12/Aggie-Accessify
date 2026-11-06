@@ -1,4 +1,5 @@
 import json
+import logging
 from decimal import Decimal
 from pathlib import Path
 
@@ -8,11 +9,21 @@ from django.utils import timezone
 from a11y_pipeline.cli import _model_client
 from a11y_pipeline.config import Settings
 from a11y_pipeline.runs.folder import RunBlockedError, run_to_folder
+from a11y_pipeline.runs.outputs import OUTPUTS_VERSION, refresh_run_outputs
 from projects.models import Run
-from projects.storage import materialize_project, scratch_dir, upload_run_folder
+from projects.storage import (
+    download_run_files,
+    materialize_project,
+    scratch_dir,
+    upload_run_folder,
+)
+
+logger = logging.getLogger(__name__)
 
 # Source copies are large and reproducible from the project files, so they stay out of storage
 SKIPPED_RUN_FOLDERS = ("work/original", "work/marked")
+# The saved files newer downloads are built from when an older run is brought up to date
+REFRESH_INPUTS = ["manifest.json", "output/updated.pptx", "output/changes.diff"]
 
 
 @task
@@ -29,7 +40,7 @@ def run_pipeline_task(run_id: str) -> str:
             output_root = scratch / "output"
             materialize_project(run.project, bundle_root)
             pipeline_settings = Settings()
-            client = _model_client(pipeline_settings)
+            client = _model_client(pipeline_settings, fresh=run.fresh)
             try:
                 completed = run_to_folder(
                     bundle_root,
@@ -78,7 +89,32 @@ def _update_completed_run(run: Run, root: Path, completed: object) -> None:
     run.input_tokens = int(totals.get("input_tokens", 0))
     run.output_tokens = int(totals.get("output_tokens", 0))
     run.cost_usd = Decimal(str(totals.get("cost_usd", 0)))
+    run.outputs_version = int(manifest.get("outputs_version", 0))
     run.save()
+
+
+@task
+def refresh_run_outputs_task(run_id: str) -> str:
+    # Bring a finished run's downloads up to date in the background
+    refresh_run_outputs_now(Run.objects.get(id=run_id))
+    return run_id
+
+
+def refresh_run_outputs_now(run: Run) -> bool:
+    # Rebuild the downloads an older run is missing from the files it saved; no model calls.
+    # True when the run gained or changed anything.
+    try:
+        with scratch_dir(f"refresh-{run.id}") as scratch:
+            download_run_files(run.storage_prefix, REFRESH_INPUTS, scratch)
+            changed = refresh_run_outputs(scratch)
+            if changed:
+                upload_run_folder(run.id, scratch)
+    except Exception:
+        logger.exception("Run %s could not be brought up to date", run.id)
+        Run.objects.filter(id=run.id).update(refreshing=False)
+        return False
+    Run.objects.filter(id=run.id).update(outputs_version=OUTPUTS_VERSION, refreshing=False)
+    return changed
 
 
 def _update_run_from_manifest(run: Run, root: Path, status: str) -> None:

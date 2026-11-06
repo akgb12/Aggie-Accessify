@@ -494,3 +494,65 @@ def test_powerpoint_run_returns_an_updated_deck(client: Client) -> None:
     title = next(e for e in review["elements"] if e["id"] == "slide_03/heading_01")
     assert title["text"] and "Proposed title" in title["note"]
     assert updated.slides[2].shapes[0].text_frame.text == title["text"]
+
+
+def _make_run_look_old(run: Run) -> None:
+    # A run finished before the current downloads existed: older manifest, no newer files
+    from django.core.files.base import ContentFile
+    from django.core.files.storage import default_storage
+
+    prefix = run.storage_prefix
+    manifest_key = f"{prefix}/manifest.json"
+    with default_storage.open(manifest_key, "rb") as stored:
+        manifest = json.loads(stored.read())
+    manifest.pop("outputs_version", None)
+    manifest["outputs"] = [{"label": "Changes", "path": "output/changes.diff"}]
+    default_storage.delete(manifest_key)
+    default_storage.save(manifest_key, ContentFile(json.dumps(manifest).encode()))
+    for name in ("output/changes.txt", "output/tagged.pdf"):
+        if default_storage.exists(f"{prefix}/{name}"):
+            default_storage.delete(f"{prefix}/{name}")
+    Run.objects.filter(id=run.id).update(outputs_version=0)
+
+
+def _powerpoint_run(client: Client) -> Run:
+    project = _create_project(client)
+    _upload(client, project["id"], {"talk.pptx": _deck_bytes()})
+    queued = client.post(
+        f"/api/projects/{project['id']}/runs",
+        data=json.dumps({"effort": "low", "main_file": "talk.pptx", "fresh": True}),
+        content_type="application/json",
+    )
+    return Run.objects.get(id=queued.json()["id"])
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_older_run_gains_new_downloads_when_it_is_opened(client: Client) -> None:
+    from a11y_pipeline.runs.outputs import OUTPUTS_VERSION
+
+    run = _powerpoint_run(client)
+    assert run.status == Run.Status.SUCCEEDED, run.error_message
+    assert run.outputs_version == OUTPUTS_VERSION
+    assert run.fresh
+    _make_run_look_old(run)
+    review = client.get(f"/api/runs/{run.id}/review").json()
+    # Tests run background jobs at once, so the update has finished by the time it returns
+    assert review["refreshing"] is False
+    assert {"label": "Changes (Text File)", "path": "output/changes.txt"} in review["outputs"]
+    assert client.get(f"/api/runs/{run.id}/artifact/output/changes.txt").status_code == 200
+    run.refresh_from_db()
+    assert run.outputs_version == OUTPUTS_VERSION
+    assert not run.refreshing
+
+
+@pytest.mark.django_db(transaction=True)
+def test_refresh_runs_brings_every_older_run_up_to_date(client: Client) -> None:
+    from a11y_pipeline.runs.outputs import OUTPUTS_VERSION
+
+    run = _powerpoint_run(client)
+    _make_run_look_old(run)
+    output = io.StringIO()
+    call_command("refresh_runs", stdout=output)
+    assert "1 gained new downloads" in output.getvalue()
+    run.refresh_from_db()
+    assert run.outputs_version == OUTPUTS_VERSION

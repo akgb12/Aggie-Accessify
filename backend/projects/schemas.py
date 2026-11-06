@@ -35,6 +35,8 @@ class RunCreateSchema(Schema):
     effort: Literal["baseline", "low", "medium", "high"]
     main_file: str | None = None
     seed_weak: str | None = None
+    # Ask the model again for everything instead of reusing earlier answers
+    fresh: bool = False
 
 
 class RunSchema(Schema):

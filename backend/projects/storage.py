@@ -180,6 +180,21 @@ def upload_run_folder(run_id: object, folder: Path, skip: tuple[str, ...] = ()) 
     return uploaded
 
 
+def download_run_files(prefix: str, relative_paths: list[str], destination: Path) -> None:
+    # Copy the named stored run files that exist into a local folder, keeping their paths
+    root = destination.resolve()
+    for relative in relative_paths:
+        key = f"{prefix}/{validate_relative_path(relative)}"
+        if not default_storage.exists(key):
+            continue
+        output = (root / relative).resolve()
+        if not output.is_relative_to(root):
+            raise UnsafePathError("Stored run path escapes the folder")
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with default_storage.open(key, "rb") as source, output.open("wb") as target:
+            shutil.copyfileobj(source, target)
+
+
 def run_file_exists(prefix: str, relative_path: str) -> bool:
     # Check for one stored run file by its relative path
     return default_storage.exists(f"{prefix}/{validate_relative_path(relative_path)}")
