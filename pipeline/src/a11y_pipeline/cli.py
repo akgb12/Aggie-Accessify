@@ -1,4 +1,5 @@
 import argparse
+import json
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -6,6 +7,7 @@ from pathlib import Path
 from a11y_pipeline.adapters import get_adapter
 from a11y_pipeline.bundle.bundle import Bundle
 from a11y_pipeline.capabilities.base import (
+    DocumentOutlineOutput,
     FigureJudgeOutput,
     QuoteCheckOutput,
     SlideTitleOutput,
@@ -138,6 +140,22 @@ def _model_client(settings: Settings, fresh: bool = False) -> ModelClient:
     return CachedModelClient(client, DiskModelCache(settings.model_cache_dir), reuse=not fresh)
 
 
+def _fake_outline(request: ModelRequest) -> ScriptValue:
+    # A plain rule in place of judgment: the largest candidate lines are top-level headings,
+    # the rest one level down; English-looking runs are corrected; the first line is the title
+    context = json.loads(request.messages[0].text.split("\n", 1)[1])
+    lines = [line for line in context["lines"] if line.get("level") is None]
+    largest = max((float(line.get("points", 0)) for line in lines), default=0)
+    headings = [
+        {"id": line["id"], "level": 1 if float(line.get("points", 0)) >= largest else 2}
+        for line in lines
+    ]
+    english = [run["run"] for run in context["foreign_runs"] if str(run["text"]).isascii()]
+    opening = context["opening_lines"]
+    title = opening[0] if context["needs_title"] and opening else ""
+    return {"headings": headings, "english_runs": english, "title": title}
+
+
 def _good_fake_response(request: ModelRequest) -> ScriptValue:
     # Return deterministic useful descriptions for local runs
     if request.output_schema is FigureJudgeOutput:
@@ -151,6 +169,8 @@ def _good_fake_response(request: ModelRequest) -> ScriptValue:
     if request.output_schema is SlideTitleOutput:
         slide = request.element_id.split("/", 1)[0].replace("_", " ")
         return {"title": f"Overview of {slide}"}
+    if request.output_schema is DocumentOutlineOutput:
+        return _fake_outline(request)
     if request.element_id == "slide_04/figure_01":
         return {
             "alt_text": (

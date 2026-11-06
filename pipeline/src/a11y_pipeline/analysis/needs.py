@@ -26,6 +26,16 @@ def analyze_needs(document: DocumentIR) -> list[Task]:
                     )
                 )
             continue
+        if element.subtype == "document_outline":
+            if accessibility.status == "needs_description" and not accessibility.locked:
+                tasks.append(
+                    Task(
+                        element_id=element.id,
+                        capability="document_outline",
+                        reason="Document headings, languages or title need deciding",
+                    )
+                )
+            continue
         if element.semantic_type != "figure":
             continue
         if accessibility.status != "needs_description":
