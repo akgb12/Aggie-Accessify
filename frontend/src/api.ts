@@ -136,6 +136,9 @@ export const api = {
   listRuns: (id: string) => request<Run[]>(`/projects/${id}/runs`),
   createRun: (id: string, payload: RunCreate) =>
     request<Run>(`/projects/${id}/runs`, json(payload)),
+  // One run for every deck, Word document and Beamer source in the project
+  createRunsForAll: (id: string, payload: Pick<RunCreate, 'effort' | 'fresh'>) =>
+    request<Run[]>(`/projects/${id}/runs/all`, json(payload)),
   getRun: (id: string) => request<Run>(`/runs/${id}`),
   getReview: (id: string) => request<Review>(`/runs/${id}/review`),
 }

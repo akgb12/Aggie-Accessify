@@ -1,10 +1,11 @@
-import { Upload } from 'lucide-react'
+import { Sparkles, Upload } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '../api'
 import { errorMessage } from '../errors'
 import type { WorkspaceData } from '../workspace'
 import ConfirmDialog from './ConfirmDialog'
 import FileTree from './FileTree'
+import MakeAllDialog from './MakeAllDialog'
 import { Spinner } from './ui'
 
 interface Props {
@@ -20,6 +21,7 @@ export default function FilesPanel({ projectId, data, selectedFile, onSelect, on
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [removing, setRemoving] = useState<string | null>(null)
+  const [makingAll, setMakingAll] = useState(false)
 
   async function upload(files: File[]) {
     if (files.length === 0) return
@@ -59,9 +61,19 @@ export default function FilesPanel({ projectId, data, selectedFile, onSelect, on
             }}
           />
         </label>
+        {data.targets.length > 1 && (
+          <button
+            type="button"
+            onClick={() => setMakingAll(true)}
+            className="flex h-9 w-full items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+          >
+            <Sparkles aria-hidden className="h-4 w-4" />
+            Make all {data.targets.length} accessible
+          </button>
+        )}
         {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
         <p className="text-xs text-slate-600">
-          Slide decks you can make accessible are shown in maroon. Select one to open it.
+          Files you can make accessible are shown in maroon. Select one to open it.
         </p>
       </div>
       <div className="min-h-0 flex-1 overflow-auto pt-1">
@@ -87,6 +99,14 @@ export default function FilesPanel({ projectId, data, selectedFile, onSelect, on
         >
           <span className="font-mono">{removing}</span> will be removed from this project.
         </ConfirmDialog>
+      )}
+      {makingAll && (
+        <MakeAllDialog
+          projectId={projectId}
+          count={data.targets.length}
+          onStarted={data.reload}
+          onClose={() => setMakingAll(false)}
+        />
       )}
     </div>
   )
