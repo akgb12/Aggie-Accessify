@@ -132,6 +132,8 @@ def outline_patches(
         patch(line["id"], "attrs.outline_level", level, "Heading level decided")
         if level:
             patch(line["id"], "accessibility.role", f"H{level}", "Heading level decided")
+            # Shown with the other model decisions, for the author to look over
+            patch(line["id"], "accessibility.status", "model_generated", "Heading level decided")
     offered = {int(run["run"]) for run in outline.get("foreign_runs", [])}
     english = sorted(offered & {int(index) for index in output.english_runs})
     element_id = capability_input.element_id

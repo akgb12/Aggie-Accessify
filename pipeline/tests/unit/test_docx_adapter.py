@@ -229,6 +229,9 @@ def test_a_full_run_returns_a_word_document_a_pdf_and_the_changes(tmp_path: Path
     assert state.final_ir is not None
     checks = docx_check_results(state.final_ir)
     assert checks["figures_have_alt_text"] and checks["tables_have_header_row"]
+    # A line made into a heading is shown with the other model decisions
+    made = next(e for e in state.final_ir.elements.values() if e.attrs.get("outline_level"))
+    assert made.accessibility.status == "model_generated"
     updated = output / "updated.docx"
     with zipfile.ZipFile(updated) as package:
         root_xml = etree.fromstring(package.read("word/document.xml"))
