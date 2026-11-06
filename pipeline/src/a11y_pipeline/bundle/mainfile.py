@@ -78,12 +78,16 @@ def is_beamer_main_file(path: Path) -> bool:
 
 
 PPTX_SUFFIX = ".pptx"
+DOCX_SUFFIX = ".docx"
+# Office files the pipeline reads directly: PowerPoint decks and Word documents
+OFFICE_SUFFIXES = (PPTX_SUFFIX, DOCX_SUFFIX)
+OFFICE_NAMES = {PPTX_SUFFIX: "PowerPoint (.pptx) deck", DOCX_SUFFIX: "Word (.docx) document"}
 
 
-def is_pptx_main_file(path: Path) -> bool:
-    # A PowerPoint deck is an OOXML zip; ignore Office's "~$" lock files
+def is_office_main_file(path: Path) -> bool:
+    # A deck or Word document is an OOXML zip; ignore Office's "~$" lock files
     return (
-        path.suffix.lower() == PPTX_SUFFIX
+        path.suffix.lower() in OFFICE_SUFFIXES
         and not path.name.startswith("~$")
         and path.is_file()
         and zipfile.is_zipfile(path)
@@ -98,9 +102,10 @@ def _validated_override(root: Path, main_file: str) -> str:
         raise MainFileError(f"Main file escapes the bundle root: {main_file}")
     if not candidate.is_file():
         raise MainFileNotFoundError(f"Main file does not exist: {main_file}")
-    if candidate.suffix.lower() == PPTX_SUFFIX:
-        if not is_pptx_main_file(candidate):
-            raise MainFileNotFoundError(f"File is not a PowerPoint (.pptx) deck: {main_file}")
+    suffix = candidate.suffix.lower()
+    if suffix in OFFICE_SUFFIXES:
+        if not is_office_main_file(candidate):
+            raise MainFileNotFoundError(f"File is not a {OFFICE_NAMES[suffix]}: {main_file}")
     elif not is_beamer_main_file(candidate):
         raise MainFileNotFoundError(f"File is not a Beamer main file: {main_file}")
     return candidate.relative_to(root_resolved).as_posix()
@@ -115,22 +120,22 @@ def list_beamer_main_files(root: Path) -> list[str]:
     return candidates
 
 
-def list_pptx_main_files(root: Path) -> list[str]:
-    # List every PowerPoint deck in a bundle, sorted by path
+def list_office_main_files(root: Path) -> list[str]:
+    # List every PowerPoint deck and Word document in a bundle, sorted by path
     return [
         path.relative_to(root).as_posix()
-        for path in sorted(root.rglob(f"*{PPTX_SUFFIX}"))
-        if "__MACOSX" not in path.parts and is_pptx_main_file(path)
+        for path in sorted(root.rglob("*"))
+        if "__MACOSX" not in path.parts and is_office_main_file(path)
     ]
 
 
 def list_main_files(root: Path) -> list[str]:
-    # Every translatable entry point: Beamer sources and PowerPoint decks
-    return sorted([*list_beamer_main_files(root), *list_pptx_main_files(root)])
+    # Every translatable entry point: Beamer sources, PowerPoint decks and Word documents
+    return sorted([*list_beamer_main_files(root), *list_office_main_files(root)])
 
 
 def find_main_file(root: Path, main_file: str | None = None) -> str:
-    # Find the only entry point (Beamer source or PowerPoint deck) in a bundle
+    # Find the only entry point (Beamer source, PowerPoint deck or Word document) in a bundle
     if not root.is_dir():
         raise MainFileNotFoundError(f"Bundle root is not a directory: {root}")
     if main_file is not None:
@@ -138,7 +143,7 @@ def find_main_file(root: Path, main_file: str | None = None) -> str:
 
     candidates = list_main_files(root)
     if not candidates:
-        raise MainFileNotFoundError("No Beamer main file or PowerPoint deck found")
+        raise MainFileNotFoundError("No Beamer main file, PowerPoint deck or Word document found")
     if len(candidates) > 1:
         names = ", ".join(candidates)
         raise MultipleMainFilesError(f"Several main files found: {names}")

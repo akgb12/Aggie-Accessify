@@ -24,6 +24,11 @@ TAGGED_PDF_FILTER = (
     '"ExportHiddenSlides":{"type":"boolean","value":"false"},'
     '"ExportNotesPages":{"type":"boolean","value":"false"}}'
 )
+# The same for a Word document, through LibreOffice's Writer exporter
+DOCUMENT_PDF_FILTER = (
+    'pdf:writer_pdf_Export:{"UseTaggedPDF":{"type":"boolean","value":"true"},'
+    '"PDFUACompliance":{"type":"boolean","value":"true"}}'
+)
 PATH_OPERATORS = {"m", "l", "c", "v", "y", "re", "h"}
 PAINT_OPERATORS = {"S", "s", "f", "F", "f*", "B", "B*", "b", "b*"}
 CLIP_OPERATORS = {"W", "W*", "n"}
@@ -41,20 +46,24 @@ class TaggedPdfResult:
 
 
 def export_tagged_pdf(deck: Path, destination: Path) -> TaggedPdfResult:
-    # Make the tagged PDF a professor would get from PowerPoint, from the updated deck
+    # Make the tagged PDF a professor would get from PowerPoint or Word, from the updated file
     soffice = find_soffice()
     if soffice is None:
         return TaggedPdfResult(None, "LibreOffice was not found, so no PDF was made")
     with tempfile.TemporaryDirectory(prefix="tagged-pdf-") as scratch:
         work = Path(scratch)
         prepared = work / deck.name
-        prepare_deck_for_pdf(deck, prepared)
+        is_document = deck.suffix.lower() == ".docx"
+        if is_document:
+            shutil.copy2(deck, prepared)
+        else:
+            prepare_deck_for_pdf(deck, prepared)
         command = [
             soffice,
             f"-env:UserInstallation=file://{work / 'lo-profile'}",
             "--headless",
             "--convert-to",
-            TAGGED_PDF_FILTER,
+            DOCUMENT_PDF_FILTER if is_document else TAGGED_PDF_FILTER,
             "--outdir",
             str(work),
             str(prepared),

@@ -331,8 +331,10 @@ def evaluate_node(state: RunState) -> dict[str, object]:
 
 
 def _floors(state: RunState) -> tuple[float, float]:
-    # The A floor depends on the source format; F is shared
-    floor_a = state.config.floor_a_pptx if state.adapter_name == "pptx" else state.config.floor_a
+    # The A floor depends on the source format; F is shared. Word documents use the Office
+    # floor, which like PowerPoint's is still provisional
+    office = state.adapter_name in {"pptx", "docx"}
+    floor_a = state.config.floor_a_pptx if office else state.config.floor_a
     return floor_a, state.config.floor_f
 
 

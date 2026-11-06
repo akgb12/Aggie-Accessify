@@ -11,6 +11,7 @@ from typing import Any
 from uuid import uuid4
 
 from a11y_pipeline.adapters import get_adapter
+from a11y_pipeline.capabilities.document_outline import OUTLINE_PROMPT_VERSION
 from a11y_pipeline.capabilities.figure_description import PROMPT_VERSION
 from a11y_pipeline.capabilities.quote_check import QUOTE_PROMPT_VERSION
 from a11y_pipeline.capabilities.slide_title import TITLE_PROMPT_VERSION
@@ -29,10 +30,13 @@ from a11y_pipeline.render.visibility import element_visible_pages
 from a11y_pipeline.report.html import write_html_report
 from a11y_pipeline.report.stats import ReportStats, build_report_stats
 from a11y_pipeline.runs.manifest import build_manifest, write_manifest
-from a11y_pipeline.runs.outputs import OUTPUTS_VERSION, write_pptx_outputs
+from a11y_pipeline.runs.outputs import OUTPUTS_VERSION, write_office_outputs
 from a11y_pipeline.synthesis.tagger import tag_pdf
 
 RUN_ID_PATTERN = re.compile(r"^\d{8}-\d{6}-[0-9a-f]{8}$")
+
+# Formats returned as the updated file itself plus a tagged PDF made from it
+OFFICE_ADAPTERS = {"pptx", "docx"}
 
 
 @dataclass(frozen=True)
@@ -186,8 +190,8 @@ def _materialize_completed_run(
     # Build tagged PDF source archive snapshots report and manifest
     if state.bundle is None or state.final_ir is None:
         raise ValueError("Completed run state is missing its bundle or final IR")
-    if state.adapter_name == "pptx":
-        return _materialize_pptx_run(folder, state, input_path)
+    if state.adapter_name in OFFICE_ADAPTERS:
+        return _materialize_office_run(folder, state, input_path)
     if state.original_pdf is None or state.marked_pdf is None:
         raise ValueError("Completed run state is missing compiled PDFs")
     adapter = get_adapter(state.adapter_name)
@@ -258,8 +262,8 @@ def _materialize_completed_run(
     return CompletedRun(folder=folder, state=state, stats=stats)
 
 
-def _materialize_pptx_run(folder: RunFolder, state: RunState, input_path: Path) -> CompletedRun:
-    # A PowerPoint run returns the updated .pptx and a tagged PDF made from it
+def _materialize_office_run(folder: RunFolder, state: RunState, input_path: Path) -> CompletedRun:
+    # A PowerPoint or Word run returns the updated file and a tagged PDF made from it
     if state.bundle is None or state.final_ir is None:
         raise ValueError("Completed run state is missing its bundle or final IR")
     adapter = get_adapter(state.adapter_name)
@@ -272,10 +276,10 @@ def _materialize_pptx_run(folder: RunFolder, state: RunState, input_path: Path) 
         state.original_pdf,
         state.config.compile_timeout_seconds,
     )
-    deck = written.project_root / state.bundle.main_file
-    shutil.copy2(deck, folder.output_dir / "updated.pptx")
+    updated = written.project_root / state.bundle.main_file
+    shutil.copy2(updated, folder.output_dir / f"updated{updated.suffix.lower()}")
     archive_project(written.project_root, folder.output_dir / "updated_project.zip")
-    outputs, pdf_issues = write_pptx_outputs(folder.output_dir)
+    outputs, pdf_issues = write_office_outputs(folder.output_dir)
     pages: list[dict[str, Any]] = []
     page_images: list[Path] = []
     if state.original_pdf is not None:
@@ -304,7 +308,13 @@ def _materialize_pptx_run(folder: RunFolder, state: RunState, input_path: Path) 
         state,
         state.bundle,
         input_path,
-        [PROMPT_VERSION, TITLE_PROMPT_VERSION, INVENTORY_PROMPT_VERSION, QUOTE_PROMPT_VERSION],
+        [
+            PROMPT_VERSION,
+            TITLE_PROMPT_VERSION,
+            INVENTORY_PROMPT_VERSION,
+            QUOTE_PROMPT_VERSION,
+            OUTLINE_PROMPT_VERSION,
+        ],
         pages,
     )
     manifest["outputs"] = outputs

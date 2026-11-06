@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+from a11y_pipeline.evaluation.docx_checks import docx_accessibility_metrics
 from a11y_pipeline.evaluation.pdf_checks import PdfCheckResult
 from a11y_pipeline.evaluation.pptx_checks import pptx_accessibility_metrics
 from a11y_pipeline.evaluation.scores import IndexScore, compute_preliminary_scores
@@ -37,6 +38,9 @@ def build_report_stats(
     if ir.source_format == "pptx":
         figure_score = selected.scores.get("A") if _has_figures(ir) else None
         accessibility_metrics = pptx_accessibility_metrics(ir, figure_score)
+    elif ir.source_format == "docx":
+        figure_score = selected.scores.get("A") if _has_figures(ir) else None
+        accessibility_metrics = docx_accessibility_metrics(ir, figure_score)
     else:
         accessibility_metrics = _pdf_accessibility_metrics(ir, selected, pdf_checks)
     fidelity_metrics: dict[str, float | None] = {

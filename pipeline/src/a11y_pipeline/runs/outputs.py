@@ -3,6 +3,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from a11y_pipeline.adapters.docx.tagged_pdf import repair_document_tags
 from a11y_pipeline.adapters.pptx.tagged_pdf import export_tagged_pdf
 from a11y_pipeline.evaluation.verapdf import run_verapdf
 from a11y_pipeline.ir.models import Issue
@@ -14,18 +15,28 @@ from a11y_pipeline.runs.manifest import write_manifest
 OUTPUTS_VERSION = 1
 
 
-def write_pptx_outputs(output_dir: Path) -> tuple[list[dict[str, str]], list[Issue]]:
-    # The downloads made from the updated deck alone, for a new run or an older one; each is
-    # made only when it is missing
+def write_office_outputs(output_dir: Path) -> tuple[list[dict[str, str]], list[Issue]]:
+    # The downloads made from the updated deck or document alone, for a new run or an older
+    # one; each is made only when it is missing
     changes = output_dir / "changes.diff"
     if changes.is_file() and not (output_dir / "changes.txt").is_file():
         # The list of changes is plain text, so it is offered as a file any computer opens
         shutil.copy2(changes, output_dir / "changes.txt")
+    updated = _updated_file(output_dir)
+    if updated is None:
+        return [], []
     issues: list[Issue] = []
     pdf = output_dir / "tagged.pdf"
     if not pdf.is_file():
-        issues = _export_pptx_pdf(output_dir / "updated.pptx", pdf)
-    return pptx_outputs(pdf.is_file()), issues
+        issues = _export_pdf(updated, pdf)
+    return office_outputs(updated.suffix.lower(), pdf.is_file()), issues
+
+
+def _updated_file(output_dir: Path) -> Path | None:
+    for name in ("updated.pptx", "updated.docx"):
+        if (output_dir / name).is_file():
+            return output_dir / name
+    return None
 
 
 def refresh_run_outputs(root: Path) -> bool:
@@ -35,26 +46,34 @@ def refresh_run_outputs(root: Path) -> bool:
     if int(manifest.get("outputs_version", 0)) >= OUTPUTS_VERSION:
         return False
     output_dir = root / "output"
-    if (output_dir / "updated.pptx").is_file():
-        manifest["outputs"], _ = write_pptx_outputs(output_dir)
+    if _updated_file(output_dir) is not None:
+        manifest["outputs"], _ = write_office_outputs(output_dir)
     manifest["outputs_version"] = OUTPUTS_VERSION
     write_manifest(manifest_path, manifest)
     return True
 
 
-def pptx_outputs(pdf_made: bool = False) -> list[dict[str, str]]:
-    # What a person can download from a finished PowerPoint run
-    # Both files are accessible, so each is named by its format, not by how it is made
-    outputs = [{"label": "Accessible PowerPoint (.pptx)", "path": "output/updated.pptx"}]
+OFFICE_LABELS = {
+    ".pptx": "Accessible PowerPoint (.pptx)",
+    ".docx": "Accessible Word document (.docx)",
+}
+
+
+def office_outputs(suffix: str, pdf_made: bool = False) -> list[dict[str, str]]:
+    # What a person can download from a finished PowerPoint or Word run. Both files are
+    # accessible, so each is named by its format, not by how it is made.
+    outputs = [{"label": OFFICE_LABELS[suffix], "path": f"output/updated{suffix}"}]
     if pdf_made:
         outputs.append({"label": "Accessible PDF (.pdf)", "path": "output/tagged.pdf"})
     outputs.append({"label": "Changes (Text File)", "path": "output/changes.txt"})
     return outputs
 
 
-def _export_pptx_pdf(deck: Path, destination: Path) -> list[Issue]:
-    # The tagged PDF is an extra download; when it cannot be made the deck is still returned
-    result = export_tagged_pdf(deck, destination)
+def _export_pdf(updated: Path, destination: Path) -> list[Issue]:
+    # The tagged PDF is an extra download; when it cannot be made the file is still returned
+    result = export_tagged_pdf(updated, destination)
+    if result.pdf is not None and updated.suffix.lower() == ".docx":
+        repair_document_tags(result.pdf, updated)
     if result.pdf is None:
         return [
             Issue(

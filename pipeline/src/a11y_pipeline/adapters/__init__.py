@@ -5,6 +5,7 @@ from typing import Any
 
 from a11y_pipeline.adapters.base import PreparedDocument, SourceAdapter, WrittenDocument
 from a11y_pipeline.adapters.context import figure_context
+from a11y_pipeline.adapters.docx import DocxAdapter
 from a11y_pipeline.adapters.pptx import PptxAdapter
 from a11y_pipeline.adapters.tex_beamer.aux_reader import apply_aux_mapping, read_aux
 from a11y_pipeline.adapters.tex_beamer.builder import build, summarize
@@ -152,12 +153,19 @@ def _tolerated_errors_issue(count: int, messages: tuple[str, ...]) -> Issue:
 ADAPTER_REGISTRY: dict[str, SourceAdapter] = {
     "tex-beamer": TexBeamerAdapter(),
     "pptx": PptxAdapter(),
+    "docx": DocxAdapter(),
 }
 
 
 def adapter_name_for(main_file: str) -> str:
-    # A PowerPoint deck uses the pptx adapter; every other entry point is Beamer source
-    return "pptx" if main_file.lower().endswith(".pptx") else "tex-beamer"
+    # A PowerPoint deck or Word document uses its own adapter; every other entry point is
+    # Beamer source
+    lower = main_file.lower()
+    if lower.endswith(".pptx"):
+        return "pptx"
+    if lower.endswith(".docx"):
+        return "docx"
+    return "tex-beamer"
 
 
 def get_adapter(name: str) -> SourceAdapter:
