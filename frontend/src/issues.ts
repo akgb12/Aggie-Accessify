@@ -15,7 +15,7 @@ const WORDING: Record<string, IssueWording> = {
   },
   tagged_pdf_unavailable: {
     title: 'No PDF version was made',
-    explanation: 'The accessible PowerPoint is ready, but the PDF could not be exported from it.',
+    explanation: 'The accessible file is ready, but the PDF could not be exported from it.',
   },
   tagged_pdf_not_compliant: {
     title: 'PDF version needs a check',
@@ -35,7 +35,7 @@ const WORDING: Record<string, IssueWording> = {
   },
   alt_near_duplicate: {
     title: 'Description repeats nearby text',
-    explanation: 'It says almost the same thing as the slide text next to the figure.',
+    explanation: 'It says almost the same thing as the text next to the figure.',
   },
   alt_file_name: {
     title: 'Description looks like a file name',
@@ -95,7 +95,7 @@ const WORDING: Record<string, IssueWording> = {
   },
   coverage_unavailable: {
     title: 'Label check not possible',
-    explanation: 'This figure is a picture, so its labels cannot be checked automatically.',
+    explanation: 'This figure was not drawn from source code, so its labels cannot be listed exactly and checked against the description.',
   },
   heading_level_skipped: {
     title: 'Heading skips a level',
