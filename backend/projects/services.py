@@ -5,7 +5,11 @@ from django.core.files.storage import default_storage
 
 from a11y_pipeline.adapters import adapter_name_for, get_adapter
 from a11y_pipeline.bundle.bundle import Bundle
-from a11y_pipeline.bundle.mainfile import list_beamer_main_files, list_main_files
+from a11y_pipeline.bundle.mainfile import (
+    OFFICE_SUFFIXES,
+    list_beamer_main_files,
+    list_main_files,
+)
 from a11y_pipeline.runs.outputs import OUTPUTS_VERSION
 from projects.models import Project, Run
 from projects.storage import (
@@ -23,6 +27,7 @@ DOWNLOADABLE_ARTIFACTS = {
     "output/tagged.pdf",
     "output/updated_project.zip",
     "output/updated.pptx",
+    "output/updated.docx",
     "output/changes.diff",
     "output/changes.txt",
     "report.html",
@@ -71,14 +76,15 @@ def project_preflight(project: Project, main_file: str | None = None) -> dict[st
 
 
 def _main_file_problem(root: Path, candidates: list[str]) -> dict[str, str] | None:
-    # Explain why no single main file (Beamer source or PowerPoint deck) can be chosen yet
-    if not any(root.rglob("*.tex")) and not any(root.rglob("*.pptx")):
+    # Explain why no single main file (Beamer source, deck or Word document) can be chosen yet
+    found = (any(root.rglob(f"*{suffix}")) for suffix in (".tex", *OFFICE_SUFFIXES))
+    if not any(found):
         return {
             "code": "no_tex_files",
             "message": (
-                "No slides were found. Upload a PowerPoint (.pptx) deck, or the Beamer (.tex) "
-                "source of your slides (a .zip of the project works best); a PDF alone "
-                "cannot be remediated."
+                "No course materials were found. Upload a PowerPoint (.pptx) deck, a Word "
+                "(.docx) document, or the Beamer (.tex) source of your slides (a .zip of the "
+                "project works best); a PDF alone cannot be remediated."
             ),
         }
     if not candidates:
@@ -93,7 +99,8 @@ def _main_file_problem(root: Path, candidates: list[str]) -> dict[str, str] | No
         return {
             "code": "choose_main_file",
             "message": (
-                f"This project has {len(candidates)} slide files. Choose which one to process."
+                f"This project has {len(candidates)} files to make accessible. Choose which "
+                "one to process."
             ),
         }
     return None
@@ -113,14 +120,15 @@ def _blocked_preflight(problem: dict[str, str], candidates: list[str]) -> dict[s
 
 
 def project_targets(project: Project) -> list[str]:
-    # List what can be translated: Beamer sources (read to check) and PowerPoint decks (by name)
+    # List what can be made accessible: Beamer sources (read to check), and PowerPoint decks
+    # and Word documents (by name)
     with scratch_dir("targets") as scratch:
         materialize_project(project, scratch / "bundle", only_suffixes=(".tex",))
         beamer = list_beamer_main_files(scratch / "bundle")
     decks = [
         path
         for path in project.files.values_list("path", flat=True)
-        if path.lower().endswith(".pptx")
+        if path.lower().endswith(OFFICE_SUFFIXES)
         and not PurePosixPath(path).name.startswith("~$")
         and "__MACOSX" not in PurePosixPath(path).parts
     ]
@@ -242,6 +250,20 @@ def _change_note(element: dict[str, Any], title_moved: bool) -> str | None:
         return "Marked decorative: it is a set of straight lines with nothing to describe."
     if attrs.get("header_row_added"):
         return "The first row is now marked as a header row."
+    if attrs.get("heading_candidate") and int(attrs.get("outline_level") or 0):
+        return (
+            f"This line looked like a heading but was plain text. It is now a level "
+            f"{attrs['outline_level']} heading, so screen readers can jump to it; its look "
+            "is unchanged."
+        )
+    if element.get("subtype") == "document_outline":
+        runs = len(attrs.get("english_runs", []))
+        fixed = (
+            f" {runs} piece(s) of English text marked as another language were corrected."
+            if runs
+            else ""
+        )
+        return "The document's headings, languages and title were checked together." + fixed
     if (element.get("source") or {}).get("native_type") == "shape_cluster":
         parts = len(attrs.get("cluster_shape_ids", []))
         return (

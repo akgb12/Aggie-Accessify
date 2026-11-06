@@ -17,6 +17,7 @@ from projects.schemas import (
     ProjectCreateSchema,
     ProjectSchema,
     ProjectUpdateSchema,
+    RunBatchSchema,
     RunCreateSchema,
     RunSchema,
 )
@@ -218,7 +219,7 @@ def list_runs(request, project_id: UUID):
 
 @router.get("/projects/{project_id}/targets", response={200: dict, 404: ErrorSchema})
 def list_targets(request, project_id: UUID):
-    # List the Beamer files in a project that can be translated
+    # List the decks, documents and Beamer files in a project that can be made accessible
     project = _owned_project(request, project_id)
     return {"candidates": project_targets(project)}
 
@@ -235,20 +236,43 @@ def create_run(request, project_id: UUID, payload: RunCreateSchema):
             validate_relative_path(payload.main_file)
         except ValueError as error:
             raise HttpError(400, str(error)) from error
+    run = _queue_run(
+        project, payload.effort, payload.main_file or "", payload.seed_weak, payload.fresh
+    )
+    return Status(202, _run_payload(run))
+
+
+@router.post(
+    "/projects/{project_id}/runs/all",
+    response={202: list[RunSchema], 400: ErrorSchema, 404: ErrorSchema},
+)
+def create_runs_for_all(request, project_id: UUID, payload: RunBatchSchema):
+    # Queue one run for every deck, document and Beamer source in the project
+    project = _owned_project(request, project_id)
+    targets = project_targets(project)
+    if not targets:
+        raise HttpError(400, "This project has nothing to make accessible yet.")
+    runs = [_queue_run(project, payload.effort, target, None, payload.fresh) for target in targets]
+    return Status(202, [_run_payload(run) for run in runs])
+
+
+def _queue_run(
+    project: Project, effort: str, main_file: str, seed_weak: str | None, fresh: bool
+) -> Run:
     provider = os.getenv("MODEL_PROVIDER", "fake").strip().lower() or "fake"
     run = Run(
         project=project,
-        effort=payload.effort,
-        main_file=payload.main_file or "",
-        seed_weak=payload.seed_weak,
+        effort=effort,
+        main_file=main_file,
+        seed_weak=seed_weak,
         model_provider=provider,
-        fresh=payload.fresh,
+        fresh=fresh,
     )
     run.storage_prefix = f"runs/{run.id}"
     run.save()
     run_pipeline_task.enqueue(str(run.id))
     run.refresh_from_db()
-    return Status(202, _run_payload(run))
+    return run
 
 
 @router.get("/runs/{run_id}", response={200: RunSchema, 404: ErrorSchema})

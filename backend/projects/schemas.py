@@ -39,6 +39,11 @@ class RunCreateSchema(Schema):
     fresh: bool = False
 
 
+class RunBatchSchema(Schema):
+    effort: Literal["baseline", "low", "medium", "high"]
+    fresh: bool = False
+
+
 class RunSchema(Schema):
     id: UUID
     project_id: UUID

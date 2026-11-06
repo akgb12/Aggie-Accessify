@@ -23,7 +23,12 @@ logger = logging.getLogger(__name__)
 # Source copies are large and reproducible from the project files, so they stay out of storage
 SKIPPED_RUN_FOLDERS = ("work/original", "work/marked")
 # The saved files newer downloads are built from when an older run is brought up to date
-REFRESH_INPUTS = ["manifest.json", "output/updated.pptx", "output/changes.diff"]
+REFRESH_INPUTS = [
+    "manifest.json",
+    "output/updated.pptx",
+    "output/updated.docx",
+    "output/changes.diff",
+]
 
 
 @task

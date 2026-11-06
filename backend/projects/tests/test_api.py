@@ -556,3 +556,70 @@ def test_refresh_runs_brings_every_older_run_up_to_date(client: Client) -> None:
     assert "1 gained new downloads" in output.getvalue()
     run.refresh_from_db()
     assert run.outputs_version == OUTPUTS_VERSION
+
+
+def _docx_bytes() -> bytes:
+    # A minimal Word document: a bold line that looks like a heading, text and a small table
+    w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    package = "http://schemas.openxmlformats.org/package/2006"
+    office = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    rows = "".join(
+        f"<w:tr><w:tc><w:p><w:r><w:t>{a}</w:t></w:r></w:p></w:tc>"
+        f"<w:tc><w:p><w:r><w:t>{b}</w:t></w:r></w:p></w:tc></w:tr>"
+        for a, b in (("Week", "Topic"), ("1", "Agents"), ("2", "Search"))
+    )
+    body = (
+        "<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Course Schedule</w:t></w:r></w:p>"
+        + "".join(
+            f"<w:p><w:r><w:t>Paragraph {n} explains the plan for the term.</w:t></w:r></w:p>"
+            for n in range(9)
+        )
+        + f"<w:tbl><w:tblPr/><w:tblGrid><w:gridCol/><w:gridCol/></w:tblGrid>{rows}</w:tbl>"
+    )
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w") as archive:
+        archive.writestr(
+            "[Content_Types].xml",
+            f'<Types xmlns="{package}/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.'
+            'relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-'
+            'officedocument.wordprocessingml.document.main+xml"/></Types>',
+        )
+        archive.writestr(
+            "_rels/.rels",
+            f'<Relationships xmlns="{package}/relationships"><Relationship Id="rId1" '
+            f'Type="{office}/officeDocument" Target="word/document.xml"/></Relationships>',
+        )
+        archive.writestr(
+            "word/document.xml",
+            f'<w:document xmlns:w="{w}"><w:body>{body}<w:sectPr/></w:body></w:document>',
+        )
+    return stream.getvalue()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_make_all_accessible_runs_every_deck_and_word_document(client: Client) -> None:
+    project = _create_project(client)
+    _upload(client, project["id"], {"talk.pptx": _deck_bytes(), "syllabus.docx": _docx_bytes()})
+    targets = client.get(f"/api/projects/{project['id']}/targets").json()["candidates"]
+    assert targets == ["syllabus.docx", "talk.pptx"]
+    queued = client.post(
+        f"/api/projects/{project['id']}/runs/all",
+        data=json.dumps({"effort": "low"}),
+        content_type="application/json",
+    )
+    assert queued.status_code == 202
+    runs = {run["main_file"]: Run.objects.get(id=run["id"]) for run in queued.json()}
+    assert set(runs) == {"syllabus.docx", "talk.pptx"}
+    document = runs["syllabus.docx"]
+    assert document.status == Run.Status.SUCCEEDED, document.error_message
+    review = client.get(f"/api/runs/{document.id}/review").json()
+    assert review["source_format"] == "docx"
+    assert {"label": "Accessible Word document (.docx)", "path": "output/updated.docx"} in review[
+        "outputs"
+    ]
+    download = client.get(f"/api/runs/{document.id}/artifact/output/updated.docx")
+    assert download.status_code == 200
+    notes = [element["note"] for element in review["elements"] if element["note"]]
+    assert any("level 1 heading" in note for note in notes)
