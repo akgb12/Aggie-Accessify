@@ -102,6 +102,7 @@ export interface RunCreate {
   effort: Effort
   main_file?: string | null
   seed_weak?: string | null
+  fresh?: boolean
 }
 
 export type ElementStatus =
@@ -190,4 +191,6 @@ export interface Review {
   stop_reason: string
   round_history: unknown[]
   issues: ReviewIssue[]
+  // True while an older run gains the downloads added since it finished
+  refreshing?: boolean
 }

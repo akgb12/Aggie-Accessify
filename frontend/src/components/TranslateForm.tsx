@@ -18,6 +18,7 @@ export default function TranslateForm({ projectId, file, onStarted, compact = fa
   const { preferences } = useUser()
   const [effort, setEffort] = useState<DefaultEffort>(preferences.default_effort)
   const [seedWeak, setSeedWeak] = useState('')
+  const [fresh, setFresh] = useState(false)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -29,6 +30,7 @@ export default function TranslateForm({ projectId, file, onStarted, compact = fa
         effort,
         main_file: file,
         seed_weak: seedWeak.trim() || null,
+        fresh,
       })
       onStarted(run)
     } catch (e) {
@@ -59,6 +61,21 @@ export default function TranslateForm({ projectId, file, onStarted, compact = fa
           </label>
         </details>
       )}
+
+      <label className="flex items-start gap-2.5 text-sm text-slate-800">
+        <input
+          type="checkbox"
+          checked={fresh}
+          onChange={(event) => setFresh(event.target.checked)}
+          className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-400 accent-brand-800"
+        />
+        <span>
+          Write every description from scratch
+          <span className="block text-slate-600">
+            Off: answers from earlier runs of this deck are reused, so you pay only for what changed.
+          </span>
+        </span>
+      </label>
 
       {error && <Alert tone="danger">{error}</Alert>}
       <Button

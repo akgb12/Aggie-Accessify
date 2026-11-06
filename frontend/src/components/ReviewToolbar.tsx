@@ -61,6 +61,7 @@ interface Props {
   projectName: string
   renderEngine: string | null
   outputs: ReviewOutput[]
+  updatingOutputs?: boolean
   attentionCount: number
   leftOpen: boolean
   rightOpen: boolean
@@ -74,6 +75,7 @@ export default function ReviewToolbar({
   projectName,
   renderEngine,
   outputs,
+  updatingOutputs = false,
   attentionCount,
   leftOpen,
   rightOpen,
@@ -136,6 +138,11 @@ export default function ReviewToolbar({
             )
           })}
         </ul>
+        {updatingOutputs && (
+          <p role="status" className="mt-3 border-t border-slate-200 pt-3 text-xs text-slate-600">
+            Adding the newest download options to this result. This takes a few seconds and does not run the model again.
+          </p>
+        )}
       </Popover>
       <PanelToggle label="Show or hide the details panel" pressed={rightOpen} onClick={onToggleRight}>
         <PanelRight aria-hidden className="h-4 w-4" />

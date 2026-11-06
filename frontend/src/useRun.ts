@@ -35,7 +35,9 @@ export function useRun(runId: string | null, onFinished?: () => void): RunState 
         const review = run.status === 'succeeded' ? await api.getReview(run.id) : null
         if (cancelled) return
         setState({ runId, run, review, error: null })
-        if (isFinished(run.status)) finished.current?.()
+        // An older run being brought up to date is followed until its new downloads are in
+        const updating = review?.refreshing === true
+        if (isFinished(run.status) && !updating) finished.current?.()
         else timer = setTimeout(poll, POLL_MS)
       } catch (e) {
         if (!cancelled) setState((current) => ({ ...current, runId, error: errorMessage(e) }))
