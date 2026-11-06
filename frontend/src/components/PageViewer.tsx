@@ -62,7 +62,7 @@ export default function PageViewer({ pages, pageNumber, elements, selectedId, on
     return () => observer.disconnect()
   }, [])
 
-  if (!page) return <p className="p-6 text-sm text-slate-600">No slide pictures were made for this run.</p>
+  if (!page) return <p className="p-6 text-sm text-slate-600">No page pictures were made for this run.</p>
 
   // Fit the whole slide inside the pane, then apply the zoom on top
   const availableWidth = Math.max(0, size.width - PADDING * 2)
@@ -118,7 +118,7 @@ export default function PageViewer({ pages, pageNumber, elements, selectedId, on
           <IconButton label="Zoom in" disabled={zoom >= MAX_ZOOM} onClick={() => setZoom(Math.min(MAX_ZOOM, zoom * ZOOM_STEP))}>
             <ZoomIn aria-hidden className="h-4 w-4" />
           </IconButton>
-          <IconButton label="Fit slide to the window" disabled={zoom === 1} onClick={() => setZoom(1)}>
+          <IconButton label="Fit the page to the window" disabled={zoom === 1} onClick={() => setZoom(1)}>
             <Maximize aria-hidden className="h-4 w-4" />
           </IconButton>
         </div>

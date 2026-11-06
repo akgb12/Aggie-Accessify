@@ -26,7 +26,7 @@ function PageSummary({
       {flagged.length === 0 ? (
         <p className="mt-1 flex items-start gap-2 text-sm text-slate-500">
           <MousePointerClick aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
-          Nothing is flagged here. Click anything on the slide to inspect it.
+          Nothing is flagged here. Click anything on the page to inspect it.
         </p>
       ) : (
         <>

@@ -80,7 +80,7 @@ export default function ElementList({
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search slides"
+            placeholder={review.source_format === 'docx' ? 'Search the document' : 'Search slides'}
             className="h-9 w-full rounded-md border border-slate-300 pl-8 pr-3 text-sm placeholder:text-slate-400"
           />
         </label>
@@ -96,7 +96,7 @@ export default function ElementList({
                   scope === value ? 'bg-slate-100 font-semibold text-slate-900' : 'text-slate-600 hover:bg-slate-100',
                 )}
               >
-                {value === 'page' ? `Page ${pageNumber}` : 'All slides'}
+                {value === 'page' ? `Page ${pageNumber}` : review.source_format === 'docx' ? 'All pages' : 'All slides'}
               </button>
             ))}
           </div>

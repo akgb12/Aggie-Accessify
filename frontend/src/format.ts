@@ -113,11 +113,16 @@ const SUBTYPE_LABELS: Record<string, string> = {
   chart: 'Chart',
 }
 
-// What kind of element this is: a heading in a Word section is not a slide title
-function kindLabel(element: { id: string; type: string; subtype?: string | null }): string {
+// What kind of element this is: a heading in a Word section is not a slide title, and a
+// line made into a heading says its level
+function kindLabel(element: { id: string; type: string; subtype?: string | null; role?: string | null }): string {
   const special = element.subtype ? SUBTYPE_LABELS[element.subtype] : undefined
   if (special) return special
-  if (element.type === 'heading' && element.id.startsWith('section_')) return 'Heading'
+  if (element.id.startsWith('section_')) {
+    const level = /^H([1-6])$/.exec(element.role ?? '')
+    if (level) return `Heading ${level[1]}`
+    if (element.type === 'heading') return 'Heading'
+  }
   return typeLabel(element.type)
 }
 
@@ -127,6 +132,7 @@ export function elementLabel(element: {
   type: string
   text: string | null
   subtype?: string | null
+  role?: string | null
 }): ElementLabel {
   const segments = element.id.split('/')
   const kind = kindLabel(element)

@@ -31,7 +31,7 @@ export default function PageOverlay({ page, width, height, elements, selectedId,
       ) : (
         <img
           src={absoluteUrl(page.image_url)}
-          alt={`Rendered slide, page ${page.number}`}
+          alt={`Rendered page ${page.number}`}
           className="absolute inset-0 h-full w-full select-none"
           draggable={false}
           decoding="async"

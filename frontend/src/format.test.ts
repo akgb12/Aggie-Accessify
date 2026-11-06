@@ -119,6 +119,9 @@ describe('element wording', () => {
     const outline = elementLabel({ id: 'section_01/unknown_01', type: 'unknown', text: null, subtype: 'document_outline' })
     expect(outline.title).toBe('Document outline')
     expect(outline.subtitle).toBe('Section 1')
+    // A plain line the outline step made a heading says its level
+    const made = elementLabel({ id: 'section_02/paragraph_01', type: 'paragraph', text: '1. (24 pts)', role: 'H2' })
+    expect(made.subtitle).toBe('Section 2 · Heading 2')
   })
 
   it('shortens long text', () => {
