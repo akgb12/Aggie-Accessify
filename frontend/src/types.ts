@@ -140,6 +140,8 @@ export interface HistoryEntry {
 export interface ReviewElement {
   id: string
   type: string
+  // Finer kind, such as chart, equation or the document outline
+  subtype?: string | null
   role: string | null
   text: string | null
   status: ElementStatus
@@ -149,12 +151,12 @@ export interface ReviewElement {
   alt: string | null
   extended_description: string | null
   visible_pages: number[] | null
-  // The picture a description was written for (PowerPoint runs)
+  // The picture a description was written for (PowerPoint and Word runs)
   image_url: string | null
   source: { file: string | null; line_start: number | null; line_end: number | null } | null
   history: HistoryEntry[]
   issues: ReviewIssue[]
-  // What the update did to a PowerPoint shape besides its text
+  // What the update did besides writing text: a header row, a heading, a decorative mark
   note?: string | null
 }
 
@@ -182,7 +184,7 @@ export interface ReviewOutput {
 export interface Review {
   run_id: string
   render_engine: string | null
-  source_format: 'tex-beamer' | 'pptx'
+  source_format: 'tex-beamer' | 'pptx' | 'docx'
   outputs: ReviewOutput[]
   containers: ReviewContainer[]
   elements: ReviewElement[]

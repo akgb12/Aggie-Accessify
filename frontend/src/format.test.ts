@@ -69,6 +69,8 @@ describe('scoreTone', () => {
 describe('fileKind and shortElementId', () => {
   it('classifies files', () => {
     expect(fileKind('Lecture1-Intro.tex')).toBe('tex')
+    expect(fileKind('L02_Agent.pptx')).toBe('deck')
+    expect(fileKind('Syllabus.DOCX')).toBe('document')
     expect(fileKind('Figures/takejob.PDF')).toBe('pdf')
     expect(fileKind('Figures/cnn.png')).toBe('image')
     expect(fileKind('comment.sty')).toBe('style')
@@ -106,6 +108,17 @@ describe('element wording', () => {
     expect(label.title).toBe('Text')
     expect(label.subtitle).toBe('Slide 1 · Title page')
     expect(`${label.title} ${label.subtitle}`).not.toMatch(/_\d/)
+  })
+
+  it('names Word headings, equations and the document outline plainly', () => {
+    expect(elementLabel({ id: 'section_03/heading_01', type: 'heading', text: null }).title).toBe('Heading')
+    expect(elementLabel({ id: 'slide_03/heading_01', type: 'heading', text: null }).title).toBe('Slide title')
+    expect(elementLabel({ id: 'section_02/figure_01', type: 'figure', text: null, subtype: 'equation' }).title).toBe(
+      'Equation',
+    )
+    const outline = elementLabel({ id: 'section_01/unknown_01', type: 'unknown', text: null, subtype: 'document_outline' })
+    expect(outline.title).toBe('Document outline')
+    expect(outline.subtitle).toBe('Section 1')
   })
 
   it('shortens long text', () => {

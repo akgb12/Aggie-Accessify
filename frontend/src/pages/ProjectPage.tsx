@@ -9,12 +9,15 @@ import { useDocumentTitle } from '../hooks'
 import type { Project } from '../types'
 
 const STEPS = [
-  { title: 'Upload your slides', text: 'A .pptx deck, or a .zip with your .tex files, figures and style files.' },
-  { title: 'Make them accessible', text: 'Choose a deck and an effort level. Larger decks take a few minutes.' },
-  { title: 'Review and download', text: 'Check what changed, then download the same deck with the fixes inside.' },
+  {
+    title: 'Upload your course files',
+    text: 'PowerPoint decks (.pptx), Word documents (.docx), or a .zip with your Beamer .tex files.',
+  },
+  { title: 'Make them accessible', text: 'Choose a file, or all of them, and an effort level. Large files take a few minutes.' },
+  { title: 'Review and download', text: 'Check what changed, then download the same file with the fixes inside, or a PDF.' },
 ]
 
-// Opening a project means uploading its slides; everything after that happens in the editor
+// Opening a project means uploading its files; everything after that happens in the editor
 export default function ProjectPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
@@ -50,7 +53,7 @@ export default function ProjectPage() {
         <PageHeader
           breadcrumbs={[{ label: 'Projects', to: '/' }, { label: project?.name ?? 'Project' }]}
           title={project?.name ?? 'Project'}
-          subtitle="Upload the slides for this project. You choose which deck to make accessible next."
+          subtitle="Upload the slides and documents for this project. You choose what to make accessible next."
         />
         {error && (
           <div className="mb-6">

@@ -97,6 +97,14 @@ const WORDING: Record<string, IssueWording> = {
     title: 'Label check not possible',
     explanation: 'This figure is a picture, so its labels cannot be checked automatically.',
   },
+  heading_level_skipped: {
+    title: 'Heading skips a level',
+    explanation: 'A heading jumps more than one level deeper than the one before it, which breaks the outline readers navigate by.',
+  },
+  vague_link_text: {
+    title: 'Link text says nothing on its own',
+    explanation: 'Words like "here" or "click here" do not say where a link goes when read out of context.',
+  },
   capability_input_missing: {
     title: 'Figure could not be sent for description',
     explanation: 'The figure image was not available, so no description was requested.',
@@ -130,8 +138,8 @@ const WORDING: Record<string, IssueWording> = {
     explanation: 'Moving it automatically would change the slide, so reorder it in PowerPoint.',
   },
   layout_change_undone: {
-    title: 'A fix was undone to keep the slide unchanged',
-    explanation: 'The change altered how the slide looks, so it was reversed. You can make it by hand.',
+    title: 'A fix was undone to keep the look unchanged',
+    explanation: 'The change altered how a slide or page looks, so it was reversed. You can make it by hand.',
   },
   figure_image_unavailable: {
     title: 'Figure could not be shown to the describer',

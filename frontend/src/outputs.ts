@@ -1,9 +1,10 @@
-export type OutputKind = 'deck' | 'pdf' | 'changes' | 'archive' | 'report' | 'other'
+export type OutputKind = 'deck' | 'document' | 'pdf' | 'changes' | 'archive' | 'report' | 'other'
 
 // What kind of file a download is, from its path in the run
 export function outputKind(path: string): OutputKind {
   const lower = path.toLowerCase()
   if (lower.endsWith('.pptx')) return 'deck'
+  if (lower.endsWith('.docx')) return 'document'
   if (lower.endsWith('.pdf')) return 'pdf'
   if (lower.endsWith('.diff') || (lower.endsWith('.txt') && lower.includes('changes'))) return 'changes'
   if (lower.endsWith('.zip')) return 'archive'
@@ -13,8 +14,9 @@ export function outputKind(path: string): OutputKind {
 
 const HINTS: Record<OutputKind, string | null> = {
   deck: 'Keep editing in PowerPoint',
+  document: 'Keep editing in Word',
   pdf: 'Ready to share or post to Canvas',
-  changes: 'Every description and fix, slide by slide',
+  changes: 'Every description and fix, in order',
   archive: 'All the updated source files',
   report: 'The full accessibility report',
   other: null,

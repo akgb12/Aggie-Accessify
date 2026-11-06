@@ -4,6 +4,7 @@ import { outputHint, outputKind } from './outputs'
 describe('outputKind', () => {
   it('tells the deck, the PDF and the list of changes apart', () => {
     expect(outputKind('output/updated.pptx')).toBe('deck')
+    expect(outputKind('output/updated.docx')).toBe('document')
     expect(outputKind('output/tagged.pdf')).toBe('pdf')
     expect(outputKind('output/changes.diff')).toBe('changes')
     expect(outputKind('output/changes.txt')).toBe('changes')

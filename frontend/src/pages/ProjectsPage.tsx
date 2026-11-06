@@ -72,7 +72,7 @@ export default function ProjectsPage() {
       <PageHeader
         display
         title="Projects"
-        subtitle="Each project holds the slides for one lecture or course. Upload a PowerPoint deck or LaTeX Beamer slides, then make them accessible."
+        subtitle="Each project holds the materials for one lecture or course. Upload PowerPoint decks, Word documents or LaTeX Beamer slides, then make them accessible."
         actions={projects && projects.length > 0 ? newProject : undefined}
       />
 
@@ -101,8 +101,8 @@ export default function ProjectsPage() {
           title="Create your first project"
           action={newProject}
         >
-          A project holds the slides for one lecture. You will upload a .pptx deck or a .zip of your Beamer
-          slides next.
+          A project holds the materials for one lecture or course. You will upload .pptx decks, .docx documents
+          or a .zip of your Beamer slides next.
         </EmptyState>
       )}
 

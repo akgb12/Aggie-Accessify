@@ -40,9 +40,9 @@ export default function Dropzone({
         {busy ? <Spinner className="h-5 w-5" /> : <Upload className="h-5 w-5" />}
       </span>
       <p className="text-base font-semibold text-slate-900" aria-live="polite">
-        {busy ? 'Uploading your files' : 'Drag your slides here'}
+        {busy ? 'Uploading your files' : 'Drag your course files here'}
       </p>
-      <p className="mt-1 text-sm text-slate-600">A PowerPoint deck (.pptx), or a .zip of a LaTeX Beamer project</p>
+      <p className="mt-1 text-sm text-slate-600">PowerPoint decks (.pptx), Word documents (.docx), or a .zip of a LaTeX Beamer project</p>
       <label
         className={cx(
           buttonClasses('primary'),

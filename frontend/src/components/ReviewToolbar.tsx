@@ -22,6 +22,7 @@ function outputIcon(path: string) {
   switch (outputKind(path)) {
     case 'deck':
       return <Presentation aria-hidden className={className} />
+    case 'document':
     case 'pdf':
     case 'report':
       return <FileText aria-hidden className={className} />

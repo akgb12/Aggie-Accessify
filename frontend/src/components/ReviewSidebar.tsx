@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/kit/tabs'
-import type { ReviewElement, ReviewIssue } from '../types'
+import type { Review, ReviewElement, ReviewIssue } from '../types'
 import IssueList from './IssueList'
 
 export type SidebarTab = 'elements' | 'issues' | 'pages' | 'files'
@@ -10,7 +10,7 @@ interface Props {
   elements: ReactNode
   pages: ReactNode
   files: ReactNode
-  review: { issues: ReviewIssue[]; elements: ReviewElement[] }
+  review: { issues: ReviewIssue[]; elements: ReviewElement[]; source_format: Review['source_format'] }
   elementsById: Map<string, ReviewElement>
   slideTitles: Map<string, string>
   onOpenIssue: (issue: ReviewIssue) => void
@@ -43,7 +43,7 @@ export default function ReviewSidebar({
         className="h-11 w-full shrink-0 rounded-none border-b border-slate-200 bg-white p-0"
       >
         <TabsTrigger value="elements" className={TAB_CLASS}>
-          Slides
+          {review.source_format === 'docx' ? 'Sections' : 'Slides'}
         </TabsTrigger>
         <TabsTrigger value="issues" className={TAB_CLASS}>
           Issues

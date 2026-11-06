@@ -53,9 +53,11 @@ export function scoreTone(score: number | null): ScoreTone {
   return 'danger'
 }
 
-export function fileKind(path: string): 'tex' | 'pdf' | 'image' | 'style' | 'other' {
+export function fileKind(path: string): 'tex' | 'deck' | 'document' | 'pdf' | 'image' | 'style' | 'other' {
   const extension = path.split('.').pop()?.toLowerCase() ?? ''
   if (extension === 'tex') return 'tex'
+  if (extension === 'pptx') return 'deck'
+  if (extension === 'docx') return 'document'
   if (extension === 'pdf') return 'pdf'
   if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'eps', 'webp'].includes(extension)) return 'image'
   if (['sty', 'cls', 'bst', 'bib'].includes(extension)) return 'style'
@@ -105,10 +107,29 @@ export interface ElementLabel {
   subtitle: string
 }
 
+const SUBTYPE_LABELS: Record<string, string> = {
+  document_outline: 'Document outline',
+  equation: 'Equation',
+  chart: 'Chart',
+}
+
+// What kind of element this is: a heading in a Word section is not a slide title
+function kindLabel(element: { id: string; type: string; subtype?: string | null }): string {
+  const special = element.subtype ? SUBTYPE_LABELS[element.subtype] : undefined
+  if (special) return special
+  if (element.type === 'heading' && element.id.startsWith('section_')) return 'Heading'
+  return typeLabel(element.type)
+}
+
 // Human wording for an element, so raw ids like slide_01/title_page_01/paragraph_03 stay hidden
-export function elementLabel(element: { id: string; type: string; text: string | null }): ElementLabel {
+export function elementLabel(element: {
+  id: string
+  type: string
+  text: string | null
+  subtype?: string | null
+}): ElementLabel {
   const segments = element.id.split('/')
-  const kind = typeLabel(element.type)
+  const kind = kindLabel(element)
   const where = [containerLabel(segments[0])]
   for (const segment of segments.slice(1, -1)) where.push(typeLabel(stripIndex(segment)))
   const excerpt = element.text?.replace(/\s+/g, ' ').trim()

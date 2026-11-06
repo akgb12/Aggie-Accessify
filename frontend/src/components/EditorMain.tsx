@@ -41,9 +41,9 @@ export default function EditorMain({ project, targets, file, run, loadError, onS
   if (noTargets === 'no_tex') {
     return (
       <Centered>
-        <EmptyState icon={<FileText aria-hidden className="h-6 w-6" />} title="No slide decks in this project">
-          Only PDFs or other files were found. Use Add files on the left to add a PowerPoint (.pptx) deck or the
-          LaTeX source of your Beamer slides. A PDF alone cannot be made accessible here.
+        <EmptyState icon={<FileText aria-hidden className="h-6 w-6" />} title="Nothing to make accessible yet">
+          Only PDFs or other files were found. Use Add files on the left to add a PowerPoint (.pptx) deck, a Word
+          (.docx) document or the LaTeX source of your Beamer slides. A PDF alone cannot be made accessible here.
         </EmptyState>
       </Centered>
     )
@@ -62,8 +62,8 @@ export default function EditorMain({ project, targets, file, run, loadError, onS
   if (!file) {
     return (
       <Centered>
-        <EmptyState icon={<MousePointerClick aria-hidden className="h-6 w-6" />} title="Choose a slide deck">
-          Select a deck in the file list on the left to make it accessible or to review the last run.
+        <EmptyState icon={<MousePointerClick aria-hidden className="h-6 w-6" />} title="Choose a file">
+          Select a deck or document in the file list on the left to make it accessible or to review the last run.
         </EmptyState>
       </Centered>
     )
@@ -75,11 +75,11 @@ export default function EditorMain({ project, targets, file, run, loadError, onS
         <div role="status" aria-live="polite" className="text-center">
           <Spinner className="mx-auto h-8 w-8 text-brand-800" />
           <p className="mt-4 text-lg font-semibold text-slate-900">
-            {run.status === 'queued' ? 'Waiting to start' : 'Making your slides accessible'}
+            {run.status === 'queued' ? 'Waiting to start' : `Making ${file.toLowerCase().endsWith('.docx') ? 'your document' : 'your slides'} accessible`}
           </p>
           <p className="mt-1 text-sm text-slate-600">
-            Describing figures, fixing titles and reading order, and checking that nothing visible changed. Large
-            decks take a few minutes. You can leave this page and come back.
+            Describing figures, fixing headings, titles and reading order, and checking that nothing visible changed.
+            Large files take a few minutes. You can leave this page and come back.
           </p>
           <div className="mx-auto mt-5 h-1.5 w-64 overflow-hidden rounded-full bg-slate-200">
             <div className="animate-indeterminate h-full w-1/4 rounded-full bg-brand-800" />

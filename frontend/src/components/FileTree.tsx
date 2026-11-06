@@ -1,4 +1,15 @@
-import { ChevronDown, ChevronRight, File as FileIcon, FileCode, FileText, Folder, Image, Palette, X } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronRight,
+  File as FileIcon,
+  FileCode,
+  FileText,
+  Folder,
+  Image,
+  Palette,
+  Presentation,
+  X,
+} from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { buildTree, foldersAbove } from '../fileTree'
 import type { TreeNode } from '../fileTree'
@@ -6,7 +17,15 @@ import { fileKind, relativeTime } from '../format'
 import type { ProjectFile, Run } from '../types'
 import { cx } from './classes'
 
-const ICONS = { tex: FileCode, pdf: FileText, image: Image, style: Palette, other: FileIcon }
+const ICONS = {
+  tex: FileCode,
+  deck: Presentation,
+  document: FileText,
+  pdf: FileText,
+  image: Image,
+  style: Palette,
+  other: FileIcon,
+}
 
 interface Props {
   files: ProjectFile[]
