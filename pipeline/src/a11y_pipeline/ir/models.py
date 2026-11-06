@@ -133,7 +133,7 @@ class Issue(StrictModel):
 class DocumentIR(StrictModel):
     schema_version: Literal["1"] = "1"
     document_id: str
-    source_format: Literal["tex-beamer", "pptx"]
+    source_format: Literal["tex-beamer", "pptx", "docx"]
     main_file: str
     metadata: dict[str, str] = Field(default_factory=dict)
     containers: list[Container]

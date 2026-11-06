@@ -142,13 +142,13 @@ def _collect_edits(
 
     for element in ir.elements.values():
         part = str(element.attrs.get("part", ""))
-        if element.semantic_type == "figure" and _decorative_now(element):
+        if element.semantic_type == "figure" and decorative_now(element):
             slide(part).decorative.add(int(element.attrs["shape_id"]))
             operation(
                 "mark_shapes_decorative", part, element.id, shape_ids=[element.attrs["shape_id"]]
             )
         elif element.semantic_type == "figure":
-            description = _description(element)
+            description = alt_field_text(element)
             if description is None:
                 if not element.accessibility.locked and not element.accessibility.decorative:
                     issues.append(_alt_missing(element))
@@ -199,7 +199,7 @@ def _collect_edits(
     return edits, operations, issues
 
 
-def _decorative_now(element: Element) -> bool:
+def decorative_now(element: Element) -> bool:
     # A flat group of lines, or a picture the describer judged to carry no information. A
     # picture the author described keeps the author's text.
     if element.attrs.get("mark_decorative"):
@@ -240,7 +240,7 @@ def _slide_parts(ir: DocumentIR) -> dict[str, int]:
     return parts
 
 
-def _description(element: Element) -> str | None:
+def alt_field_text(element: Element) -> str | None:
     # One line of text for the shape's alt-text field: the short description, then the long one
     accessibility = element.accessibility
     if accessibility.locked or accessibility.decorative:
@@ -297,7 +297,7 @@ def _rewrite_package(
             if item.filename in edits:
                 data = _edit_slide(data, edits[item.filename], written[item.filename], size)
             elif item.filename == CORE_PATH and (title is not None or language is not None):
-                data = _set_core_properties(data, title, language)
+                data = set_core_properties(data, title, language)
             target.writestr(item, data, compress_type=item.compress_type)
     temporary.replace(deck)
     return written
@@ -415,7 +415,7 @@ def _added_title(shape_id: int, text: str, slide_width: int) -> etree._Element:
     return shape
 
 
-def _set_core_properties(data: bytes, title: str | None, language: str | None) -> bytes:
+def set_core_properties(data: bytes, title: str | None, language: str | None) -> bytes:
     root = etree.fromstring(data)
     for name, value in (("title", title), ("language", language)):
         if value is None:

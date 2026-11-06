@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -24,6 +24,9 @@ class FigureDescriptionInput(BaseModel):
     other_titles: list[str] = []
     # A transcription of the words drawn in the image, from the text inventory
     image_text: list[str] = []
+    # A Word document's outline step: lines that may be headings, existing headings, and words
+    # marked as another language, each with its id
+    outline: dict[str, Any] = {}
 
 
 class FigureDescriptionOutput(BaseModel):
@@ -34,6 +37,18 @@ class FigureDescriptionOutput(BaseModel):
 
 class SlideTitleOutput(BaseModel):
     title: str
+
+
+class OutlineHeading(BaseModel):
+    id: str
+    # 1 to 6 for a heading; 0 for a line that is not one
+    level: int
+
+
+class DocumentOutlineOutput(BaseModel):
+    headings: list[OutlineHeading] = []
+    english_runs: list[int] = []
+    title: str = ""
 
 
 class QuoteResult(BaseModel):
