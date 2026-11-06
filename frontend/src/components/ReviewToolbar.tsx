@@ -97,7 +97,13 @@ export default function ReviewToolbar({
           <dt className="text-slate-600">Effort</dt>
           <dd className="capitalize">{run.effort}</dd>
           <dt className="text-slate-600">Cost</dt>
-          <dd className="tabular-nums">{formatCost(run.cost_usd)}</dd>
+          <dd className="tabular-nums">
+            {formatCost(run.cost_usd)}
+            {/* Saved answers from an earlier run are free, though their model use is still listed */}
+            {Number(run.cost_usd) === 0 && run.input_tokens > 0 && run.model_provider !== 'fake' && (
+              <span className="block text-sm text-slate-600">Reused saved answers from earlier runs</span>
+            )}
+          </dd>
           <dt className="text-slate-600">Model use</dt>
           <dd className="tabular-nums">
             {run.input_tokens.toLocaleString()} in · {run.output_tokens.toLocaleString()} out ({run.model_provider})
