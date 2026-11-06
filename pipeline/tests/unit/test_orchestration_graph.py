@@ -186,7 +186,7 @@ def test_weak_then_good_repairs_only_cv_and_stops(tmp_path: Path) -> None:
         assert event["cost_usd"] == 0.0
         assert event["cached"] is False
         assert event["model"] == "claude-sonnet-5-5"
-        assert event["prompt_version"] == "figure_description_v5"
+        assert event["prompt_version"] == "figure_description_v6"
         assert event["max_tokens"] == 1000
         assert "latency_ms" in event
         assert "timestamp" in event
