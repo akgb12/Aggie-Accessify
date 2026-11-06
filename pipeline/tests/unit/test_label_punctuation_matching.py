@@ -1,4 +1,8 @@
-from a11y_pipeline.evaluation.concepts import _clean_tikz_label, evaluate_coverage
+from a11y_pipeline.evaluation.concepts import (
+    _clean_tikz_label,
+    build_figure_concepts,
+    evaluate_coverage,
+)
 from a11y_pipeline.evaluation.vetoes import (
     figure_contradiction_veto,
     quoted_spans,
@@ -188,3 +192,14 @@ def test_apostrophes_are_not_read_as_quote_marks() -> None:
     assert quoted_spans(text) == ["then return node", "end"]
     nested = "State 'S' leads to 'Fringe [], Closed [S]'. Arrow labeled \"d\" goes on."
     assert quoted_spans(nested) == ["S", "Fringe [], Closed [S]", "d"]
+
+
+def test_drawn_values_and_ellipses_are_checked_the_way_a_description_says_them() -> None:
+    # A heuristic graph labels its nodes h=2, h=4, h=1 and h=0, and a tree has an ellipsis
+    figure = _figure("", [])
+    concepts = build_figure_concepts(figure, [], ["h=2", "h=4", "h=1", "h=0", "…", "Step 1"])
+    # The values are labels of their own, not a numbered series, and the ellipsis has no words
+    assert concepts.required == ["label:h=2", "label:h=4", "label:h=1", "label:h=0", "label:Step 1"]
+    said = "Nodes show h equals 2, h equals 4, h equals 1 and h equals 0, from step 1."
+    assert evaluate_coverage(said, concepts.required).coverage == 1.0
+    assert evaluate_coverage("f ≤ 3 and h=2", ["label:f ≤ 3", "label:h=2"]).coverage == 1.0

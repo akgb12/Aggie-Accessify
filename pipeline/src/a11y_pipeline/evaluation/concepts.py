@@ -94,6 +94,11 @@ def _is_prose(label: str) -> bool:
     return len(label.split()) > MAX_REQUIRED_LABEL_WORDS
 
 
+def _is_unsayable(label: str) -> bool:
+    # A label of punctuation only, such as an ellipsis, has no words a description could match
+    return re.search(r"\w", label) is None
+
+
 def build_figure_concepts(
     element: Element,
     nearby_text: list[str],
@@ -135,7 +140,7 @@ def build_figure_concepts(
         if normalize_text(label) not in hidden_normalized:
             filtered_visible.append(label)
     required = _label_concepts_with_sequences(
-        [label for label in filtered_visible if not _is_prose(label)]
+        [label for label in filtered_visible if not _is_prose(label) and not _is_unsayable(label)]
     )
     excluded: list[str] = []
     for label in hidden:
@@ -213,6 +218,9 @@ def _label_concepts_with_sequences(labels: list[str]) -> list[str]:
         if match is None:
             continue
         stem = match.group(1).strip()
+        # "h=2" and "f<3" give values, not a numbered series like "Step 1, Step 2"
+        if not re.search(r"[\w\s]$", stem):
+            continue
         key = normalize_text(stem)
         values = groups.setdefault(key, [])
         values.append((label, int(match.group(2))))
@@ -259,9 +267,12 @@ def _concept_matches_normalized(normalized_text: str, concept: str) -> bool:
     # Apply the concept grammar to normalized text
     if concept.startswith("label:"):
         label = normalize_text(concept[6:])
-        # Math labels are said in many ways, so "$X_1$" is also met by "X1"
-        return _contains_phrase(normalized_text, label) or math_label_present(
-            normalized_text, concept[6:]
+        # Math labels are said in many ways, so "$X_1$" is also met by "X1", and "h=2" by
+        # "h equals 2"
+        return (
+            _contains_phrase(normalized_text, label)
+            or _contains_phrase(normalized_text, _spoken(label))
+            or math_label_present(normalized_text, concept[6:])
         )
     parts = concept.split(":", 2)
     if len(parts) != 3 or parts[0] not in {"sequence", "count"}:
@@ -272,6 +283,25 @@ def _concept_matches_normalized(normalized_text: str, concept: str) -> bool:
         return False
     noun = normalize_text(parts[2])
     return _contains_count(normalized_text, count) and _contains_stem(normalized_text, noun)
+
+
+# Symbols a description writes out in words
+SPOKEN_SYMBOLS = (
+    ("<=", " less than or equal to "),
+    (">=", " greater than or equal to "),
+    ("≤", " less than or equal to "),
+    ("≥", " greater than or equal to "),
+    ("≠", " not equal to "),
+    ("=", " equals "),
+    ("<", " less than "),
+    (">", " greater than "),
+)
+
+
+def _spoken(label: str) -> str:
+    for symbol, words in SPOKEN_SYMBOLS:
+        label = label.replace(symbol, words)
+    return label
 
 
 def loosen_text(value: str) -> str:
