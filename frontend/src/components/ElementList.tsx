@@ -1,6 +1,6 @@
 import { ListFilter, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { containerLabel, elementLabel } from '../format'
+import { containerLabel, containerTitle, elementLabel } from '../format'
 import { needsAttention, statusGroup, statusLabel } from '../status'
 import type { ElementStatus, Review, ReviewElement } from '../types'
 import { cx } from './classes'
@@ -63,8 +63,7 @@ export default function ElementList({
           .includes(needle)
       })
       if (elements.length === 0) continue
-      const titleElement = container.title_element_id ? elementsById.get(container.title_element_id) : null
-      result.push({ id: container.id, title: titleElement?.text ?? '', elements })
+      result.push({ id: container.id, title: containerTitle(container, elementsById), elements })
     }
     return { groups: result, hidden: hiddenCount }
   }, [review, elementsById, visible, scope, pageNumber, query])

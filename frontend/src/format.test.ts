@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   containerLabel,
+  containerTitle,
   elementLabel,
   fileKind,
   formatBytes,
@@ -126,6 +127,17 @@ describe('element wording', () => {
     const equation = elementLabel({ id: 'section_05/figure_02', type: 'figure', text: null, subtype: 'equation', alt: 'n sub 1 sine theta' })
     expect(equation.title).toBe('n sub 1 sine theta')
     expect(equation.subtitle).toBe('Section 5 · Equation')
+  })
+
+  it('titles a Word section only by a line that is a heading now', () => {
+    const elements = new Map([
+      ['section_02/paragraph_01', { type: 'paragraph', text: 'Equation 1', role: null }],
+      ['section_03/paragraph_01', { type: 'paragraph', text: 'Guidelines:', role: 'H2' }],
+      ['slide_01/title_01', { type: 'paragraph', text: 'Welcome', role: null }],
+    ])
+    expect(containerTitle({ id: 'section_02', title_element_id: 'section_02/paragraph_01' }, elements)).toBe('')
+    expect(containerTitle({ id: 'section_03', title_element_id: 'section_03/paragraph_01' }, elements)).toBe('Guidelines:')
+    expect(containerTitle({ id: 'slide_01', title_element_id: 'slide_01/title_01' }, elements)).toBe('Welcome')
   })
 
   it('shortens long text', () => {

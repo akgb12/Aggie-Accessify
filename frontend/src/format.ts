@@ -94,6 +94,21 @@ function stripIndex(segment: string): string {
   return segment.replace(/_\d+$/, '')
 }
 
+// The title of a slide or section. A Word section starts at a line that looked like a
+// heading, and that line names the section only if it is a heading now.
+export function containerTitle(
+  container: { id: string; title_element_id: string | null },
+  elementsById: Map<string, { type: string; text: string | null; role?: string | null }>,
+): string {
+  const element = container.title_element_id ? elementsById.get(container.title_element_id) : undefined
+  if (!element?.text) return ''
+  const named =
+    !container.id.startsWith('section_') ||
+    ['heading', 'document_title'].includes(element.type) ||
+    /^H\d$/.test(element.role ?? '')
+  return named ? element.text : ''
+}
+
 // "slide_04" becomes "Slide 4"
 export function containerLabel(id: string): string {
   const match = /^(.*?)_0*(\d+)$/.exec(id)

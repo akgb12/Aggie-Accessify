@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { containerTitle } from '../format'
 import { usePersistentFlag } from '../hooks'
 import { needsAttention, statusGroup } from '../status'
 import type { ElementStatus, Review, ReviewElement, ReviewIssue, Run } from '../types'
@@ -49,7 +50,7 @@ export default function ReviewView({ run, review, projectName, workspace, files,
   const slideTitles = useMemo(() => {
     const titles = new Map<string, string>()
     for (const container of review.containers) {
-      const title = container.title_element_id ? elementsById.get(container.title_element_id)?.text : null
+      const title = containerTitle(container, elementsById)
       if (title) titles.set(container.id, title)
     }
     return titles
