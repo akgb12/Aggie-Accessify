@@ -3,8 +3,11 @@ from a11y_pipeline.ir.models import DocumentIR, Element
 # The deterministic checks a Word document can fail, and which provisional A metric each feeds.
 # Names follow Word's own Accessibility Checker where it has a matching rule.
 
-# A document this long without one heading cannot be navigated by headings
-HEADINGS_EXPECTED_FROM = 8
+# A document longer than this many pages needs headings to be navigated; a one-page memo
+# or form does not
+HEADINGS_EXPECTED_AFTER_PAGES = 2
+# Without rendered pages, about this many paragraphs fill two pages
+HEADINGS_EXPECTED_FROM_PARAGRAPHS = 40
 
 
 def docx_check_results(ir: DocumentIR) -> dict[str, bool]:
@@ -14,7 +17,7 @@ def docx_check_results(ir: DocumentIR) -> dict[str, bool]:
     tables = [e for e in ir.elements.values() if e.semantic_type == "table"]
     formulas = [e for e in ir.elements.values() if e.semantic_type == "formula"]
     return {
-        "headings_present": bool(headings) or len(paragraphs) < HEADINGS_EXPECTED_FROM,
+        "headings_present": bool(headings) or not _long(ir, len(paragraphs)),
         "heading_levels_in_order": _skips(headings) == 0,
         "figures_have_alt_text": all(_has_description(figure) for figure in figures),
         "tables_have_header_row": all(
@@ -43,6 +46,13 @@ def docx_accessibility_metrics(
         "D": 50.0 * bool(_title(ir)) + 50.0 * bool(_language(ir)),
         "C": 100.0 * sum(checks.values()) / len(checks),
     }
+
+
+def _long(ir: DocumentIR, paragraphs: int) -> bool:
+    pages = max((page for c in ir.containers for page in c.rendered_pages), default=0)
+    if pages:
+        return pages > HEADINGS_EXPECTED_AFTER_PAGES
+    return paragraphs >= HEADINGS_EXPECTED_FROM_PARAGRAPHS
 
 
 def _headings(ir: DocumentIR) -> list[int]:
