@@ -10,7 +10,7 @@ from a11y_pipeline.capabilities.base import (
 from a11y_pipeline.ir.models import HistoryEntry, Patch
 from a11y_pipeline.models.client import ModelClient, ModelMessage, ModelRequest
 
-OUTLINE_PROMPT_VERSION = "document_outline_v1"
+OUTLINE_PROMPT_VERSION = "document_outline_v2"
 OUTLINE_DEFAULT_MODEL = "claude-sonnet-5-5"
 MAX_LEVEL = 6
 MAX_TITLE_WORDS = 20

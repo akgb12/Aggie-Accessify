@@ -56,6 +56,15 @@ LARGER_POINTS = 1.5
 # How much surrounding text a figure's description is given
 NEARBY_PARAGRAPHS = 2
 VAGUE_LINK_TEXT = {"here", "click here", "link", "this link", "this", "more", "read more", "click"}
+# The start of a numbered question or part on an exam or worksheet, such as "1. (24 pts)",
+# "Question 3" or "Part B:"; a reader jumps between them, so each may be a heading
+NUMBERED_ITEM = re.compile(
+    r"^(\d{1,2}[.)]\s*\(\s*\d+\s*(pts?|points?|marks?)\s*\)"
+    r"|(question|problem|exercise|part|task|section)\s+([0-9]{1,2}|[a-h]|[ivx]{1,4})\b)",
+    re.IGNORECASE,
+)
+# A numbered question can be a full sentence, so it may be longer than other headings
+MAX_QUESTION_CHARACTERS = 200
 CAPTION = re.compile(r"^(figure|fig\.|table|chart|graph|image)\s*\d", re.IGNORECASE)
 
 
@@ -460,8 +469,11 @@ def _outline_level(node: etree._Element, style_id: str, styles: _Styles) -> int 
 def _heading_features(
     node: etree._Element, text: str, style_id: str, styles: _Styles, body_size: float
 ) -> dict[str, Any] | None:
-    # A short standalone line set apart by bold or size: it looks like a heading but a screen
-    # reader cannot find it as one. The model decides; these are only the candidates.
+    # A short standalone line set apart by bold or size, or the start of a numbered question:
+    # it works as a heading but a screen reader cannot find it as one. The model decides;
+    # these are only the candidates.
+    if NUMBERED_ITEM.match(text) and len(text) <= MAX_QUESTION_CHARACTERS:
+        return {"numbered_item": True, "points": round(body_size, 1)}
     if len(text) > MAX_HEADING_CHARACTERS or len(text.split()) > MAX_HEADING_WORDS:
         return None
     if text.endswith((".", ",", ";")) or node.find(f"{w('pPr')}/{w('numPr')}") is not None:
