@@ -10,6 +10,7 @@ from PIL import Image
 
 from a11y_pipeline.adapters import adapter_name_for, get_adapter
 from a11y_pipeline.adapters.docx.math_text import math_text
+from a11y_pipeline.adapters.docx.render import _find
 from a11y_pipeline.adapters.pptx.render import find_soffice
 from a11y_pipeline.bundle.bundle import Bundle
 from a11y_pipeline.cli import _model_client
@@ -197,6 +198,23 @@ def test_word_equations_read_as_one_line_of_text() -> None:
         "</m:sSup></m:e></m:rad></m:oMath>"
     )
     assert math_text(equation) == "x=sqrt(b^2)"
+
+
+def test_repeated_lines_are_found_in_order_and_boxed_in_full() -> None:
+    # Two answer lines read "True False"; a question wraps onto a second line
+    flat = [
+        ("true", (10, 90, 30, 100)),
+        ("false", (60, 90, 80, 100)),
+        ("which", (10, 70, 40, 80)),
+        ("is", (45, 70, 55, 80)),
+        ("right", (10, 60, 35, 70)),
+        ("true", (10, 40, 30, 50)),
+        ("false", (60, 40, 80, 50)),
+    ]
+    assert _find(flat, ["true", "false"], 0) == ((10, 90, 80, 100), 2)
+    assert _find(flat, ["true", "false"], 2) == ((10, 40, 80, 50), 7)
+    # The box covers every line of the text, not only its first words
+    assert _find(flat, ["which", "is", "right"], 0) == ((10, 60, 55, 80), 5)
 
 
 def test_a_full_run_returns_a_word_document_a_pdf_and_the_changes(tmp_path: Path) -> None:

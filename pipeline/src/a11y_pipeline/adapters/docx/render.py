@@ -185,30 +185,38 @@ def _set(element: Element, placement: Placement, method: str) -> None:
 
 
 def _place_text(ir: DocumentIR, rendered: Path) -> None:
-    # Find each text element's first words on the pages, never going back a page
+    # Find each text element's first words on the pages, never going back a page and, on a
+    # page, starting after the last line found, so repeated lines land on their own copies
     words = DrawnWords(rendered)
     with pikepdf.open(rendered) as pdf:
         count = len(pdf.pages)
-    page_words: dict[int, tuple[list[Any], tuple[float, float, float, float]]] = {}
+    page_words: dict[int, list[tuple[str, Any]]] = {}
     page = 1
+    cursor = 0
     for element in ir.elements.values():
         if element.render.pages:
-            page = max(page, element.render.pages[0])
+            if element.render.pages[0] > page:
+                page, cursor = element.render.pages[0], 0
             continue
         text = str(element.content.get("text") or "")
-        wanted = _words(text)[:MATCH_WORDS]
+        wanted = _words(text)
         if not wanted:
             continue
-        for candidate in range(page, min(count, page + 3) + 1):
+        # Later pages first, then this page from its top, for text drawn out of order
+        tries = [(page, cursor)] + [(c, 0) for c in range(page + 1, min(count, page + 3) + 1)]
+        tries.append((page, 0))
+        for candidate, start in tries:
             if candidate not in page_words:
-                page_words[candidate] = words.page(candidate)
-            box = _find(*page_words[candidate], wanted)
-            if box is not None:
+                page_words[candidate] = _flat_words(*words.page(candidate))
+            found = _find(page_words[candidate], wanted, start)
+            if found is not None:
+                box, end = found
                 element.render.pages = [candidate]
                 element.render.bbox = box
                 element.render.mapping_method = "position_match"
                 element.render.confidence = 0.7
-                page = candidate
+                if candidate != page or end > cursor:
+                    page, cursor = candidate, end
                 break
 
 
@@ -216,22 +224,44 @@ def _words(text: str) -> list[str]:
     return [word for word in re.findall(r"\w+", text.lower()) if word]
 
 
-def _find(
-    words: list[Any], page_box: tuple[float, float, float, float], wanted: list[str]
-) -> tuple[float, float, float, float] | None:
-    # The box around the first run of page words that spells the wanted words, in points from
-    # the bottom-left corner like every other box
+def _flat_words(
+    words: list[Any], page_box: tuple[float, float, float, float]
+) -> list[tuple[str, Any]]:
+    # Each word piece on the page with its box in points from the bottom-left corner
+    page_x0, page_y0, _, page_y1 = page_box
     flat: list[tuple[str, Any]] = []
     for word in words:
+        x0, top, x1, bottom = word.bbox
+        box = (x0 + page_x0, page_y1 - bottom + page_y0, x1 + page_x0, page_y1 - top + page_y0)
         for piece in _words(word.text):
-            flat.append((piece, word))
-    for start in range(len(flat) - len(wanted) + 1):
-        if all(flat[start + offset][0] == wanted[offset] for offset in range(len(wanted))):
-            boxes = [flat[start + offset][1].bbox for offset in range(len(wanted))]
-            page_x0, page_y0, _, page_y1 = page_box
-            left = min(box[0] for box in boxes) + page_x0
-            right = max(box[2] for box in boxes) + page_x0
-            top = min(box[1] for box in boxes)
-            bottom = max(box[3] for box in boxes)
-            return (left, page_y1 - bottom + page_y0, right, page_y1 - top + page_y0)
+            flat.append((piece, box))
+    return flat
+
+
+def _find(
+    flat: list[tuple[str, Any]], wanted: list[str], start: int
+) -> tuple[tuple[float, float, float, float], int] | None:
+    # The first place from start whose words spell the wanted text's first words. The box
+    # grows over as much of the rest of the text as follows on the page. Returns the box and
+    # where the first words end, so a table's own cells are still found after it.
+    head = wanted[:MATCH_WORDS]
+    for index in range(start, len(flat) - len(head) + 1):
+        if any(flat[index + offset][0] != head[offset] for offset in range(len(head))):
+            continue
+        end = index + len(head)
+        span = end
+        while (
+            span < len(flat)
+            and span - index < len(wanted)
+            and flat[span][0] == wanted[span - index]
+        ):
+            span += 1
+        boxes = [box for _, box in flat[index:span]]
+        bbox = (
+            min(box[0] for box in boxes),
+            min(box[1] for box in boxes),
+            max(box[2] for box in boxes),
+            max(box[3] for box in boxes),
+        )
+        return bbox, end
     return None
