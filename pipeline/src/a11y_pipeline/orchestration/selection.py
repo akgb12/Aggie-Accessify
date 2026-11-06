@@ -36,7 +36,9 @@ def select_best_candidate(
         for candidate in qualified[1:]:
             best_key = (best.scores["A"], best.scores["F"])
             candidate_key = (candidate.scores["A"], candidate.scores["F"])
-            if candidate_key > best_key:
+            # A later candidate holds every earlier change plus more, such as a document
+            # outline or slide titles the scores do not count, so it wins a tie
+            if candidate_key >= best_key:
                 best = candidate
         return best
     if fallback is not None:

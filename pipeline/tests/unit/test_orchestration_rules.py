@@ -122,6 +122,18 @@ def test_candidate_selection_uses_fidelity_tie_break() -> None:
     assert selected.candidate_id == "c2"
 
 
+def test_a_later_candidate_wins_a_tie() -> None:
+    # Work the scores do not measure, such as headings or titles, is kept on equal scores
+    candidates = [
+        _candidate("c0", 100, 100),
+        _candidate("c1", 100, 100),
+    ]
+
+    selected = select_best_candidate(candidates, floor_a=0, floor_f=90)
+
+    assert selected.candidate_id == "c1"
+
+
 def test_candidate_selection_falls_back_to_c0() -> None:
     # Preserve deterministic fallback when floors fail
     candidates = [
