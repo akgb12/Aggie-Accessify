@@ -122,6 +122,10 @@ describe('element wording', () => {
     // A plain line the outline step made a heading says its level
     const made = elementLabel({ id: 'section_02/paragraph_01', type: 'paragraph', text: '1. (24 pts)', role: 'H2' })
     expect(made.subtitle).toBe('Section 2 · Heading 2')
+    // An equation with no text of its own is named by how it is read aloud
+    const equation = elementLabel({ id: 'section_05/figure_02', type: 'figure', text: null, subtype: 'equation', alt: 'n sub 1 sine theta' })
+    expect(equation.title).toBe('n sub 1 sine theta')
+    expect(equation.subtitle).toBe('Section 5 · Equation')
   })
 
   it('shortens long text', () => {

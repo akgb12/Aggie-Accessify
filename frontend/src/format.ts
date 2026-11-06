@@ -133,12 +133,14 @@ export function elementLabel(element: {
   text: string | null
   subtype?: string | null
   role?: string | null
+  alt?: string | null
 }): ElementLabel {
   const segments = element.id.split('/')
   const kind = kindLabel(element)
   const where = [containerLabel(segments[0])]
   for (const segment of segments.slice(1, -1)) where.push(typeLabel(stripIndex(segment)))
-  const excerpt = element.text?.replace(/\s+/g, ' ').trim()
+  // A figure or equation has no text of its own, so its description names it
+  const excerpt = (element.text || element.alt)?.replace(/\s+/g, ' ').trim()
   if (excerpt) {
     const short = excerpt.length > 70 ? `${excerpt.slice(0, 69)}…` : excerpt
     return { title: short, subtitle: [...where, kind].join(' · ') }

@@ -82,7 +82,8 @@ export default function Inspector({
   onSelect: (id: string) => void
 }) {
   if (!element) return <PageSummary pageNumber={pageNumber} flagged={flagged} onSelect={onSelect} />
-  const label = elementLabel(element)
+  // The alt text has its own box below, so the heading names the kind of element
+  const label = elementLabel({ ...element, alt: null })
   const source = element.source
   const showAlt = element.type === 'figure' || Boolean(element.alt)
 
