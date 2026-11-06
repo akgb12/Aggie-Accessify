@@ -144,6 +144,12 @@ def test_junk_alt_text_is_recognised() -> None:
     assert is_junk_alt("Picture 12")
     assert is_junk_alt("diagram.png")
     assert not is_junk_alt("A bar chart of sales by quarter")
+    # File names Office keeps, camera numbering and Office's own unreviewed guesses
+    assert is_junk_alt("latex-image-1.pdf")
+    assert is_junk_alt("IMG-0791")
+    assert is_junk_alt("Screenshot 2024-01-02 at 3.04.05 PM")
+    assert is_junk_alt("A graph of dots\n\nDescription automatically generated")
+    assert not is_junk_alt("Image of the IMG lab entrance")
 
 
 def test_preflight_explains_files_that_are_not_plain_decks(tmp_path: Path) -> None:

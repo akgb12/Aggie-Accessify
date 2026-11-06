@@ -44,12 +44,16 @@ TITLE_PLACEHOLDERS = {
 }
 # Shapes that draw a diagram but carry no text of their own
 DRAWING_TYPES = {MSO_SHAPE_TYPE.AUTO_SHAPE, MSO_SHAPE_TYPE.LINE, MSO_SHAPE_TYPE.FREEFORM}
-# Alt text that names a file or a placeholder says nothing about the picture
+# Alt text that names a file, a camera's numbering or a placeholder says nothing about the
+# picture
 JUNK_ALT = re.compile(
     r"^(\s*(picture|image|graphic|figure|chart|diagram|photo)\s*\d*\s*"
-    r"|.*\.(png|jpe?g|gif|bmp|tiff?|emf|wmf|svg))$",
+    r"|.*\.(png|jpe?g|gif|bmp|tiff?|emf|wmf|svg|pdf|eps|heic|webp)"
+    r"|\s*(img|dsc|dscn|pxl|screenshot|screen shot)[\s_-]*[\d_ .-]*(at [\d. ]+(am|pm)?)?)$",
     re.IGNORECASE,
 )
+# Office writes a guess of its own and labels it; it is a draft for the author to check
+AUTO_ALT = re.compile(r"description automatically generated", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -60,7 +64,8 @@ class FigureMedia:
 
 
 def is_junk_alt(value: str) -> bool:
-    return bool(JUNK_ALT.match(value.strip()))
+    text = value.strip()
+    return bool(JUNK_ALT.match(text) or AUTO_ALT.search(text))
 
 
 def parse(bundle: Bundle) -> DocumentIR:
