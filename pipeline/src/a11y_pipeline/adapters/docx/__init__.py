@@ -24,6 +24,8 @@ __all__ = ["DocxAdapter"]
 MIN_OCR_WORDS = 5
 # How many lines the outline step sees from the top of the document, to find its title
 OPENING_LINES = 6
+# A page number past any document's end
+END_OF_DOCUMENT = 100_000
 
 
 class DocxAdapter:
@@ -237,10 +239,11 @@ def _outline_input(ir: DocumentIR, outline: Element) -> FigureDescriptionInput:
         for element_id in container.element_ids
         if element_id in set(outline.attrs["candidates"]) | set(outline.attrs["headings"])
     ]
+    # The first lines, tables included: some documents are laid out entirely in a table
     opening = [
         str(element.content["text"])[:200]
         for element in ir.elements.values()
-        if element.semantic_type in {"paragraph", "heading", "document_title"}
+        if element.semantic_type in {"paragraph", "heading", "document_title", "table"}
         and element.content.get("text")
     ][:OPENING_LINES]
     return FigureDescriptionInput(
@@ -261,33 +264,77 @@ def _outline_input(ir: DocumentIR, outline: Element) -> FigureDescriptionInput:
 
 
 def _undo_on_pages(ir: DocumentIR, pages: set[int], change: str) -> list[Issue]:
-    # Put back one kind of change on pages whose look changed
+    # Put back one kind of change on pages whose look changed. A table can run over several
+    # pages, and its header row repeats on each, so a table counts on every page it covers.
     issues: list[Issue] = []
+    spans = _page_spans(ir)
     for element in ir.elements.values():
-        if not set(element.render.pages) & pages:
+        hit = sorted(spans.get(element.id, set()) & pages)
+        if not hit:
             continue
         if change == "headers" and element.attrs.get("header_row_added"):
             element.attrs["header_row_added"] = False
             element.attrs["first_row_header"] = False
             element.accessibility.status = "needs_review"
             issues.append(
-                _undone(element.id, "Marking the table's first row as a header row", element)
+                _undone(
+                    element.id,
+                    "Marking the table's first row as a header row (Word then repeats it on "
+                    "every page the table covers)",
+                    hit,
+                    "If that is fine, select the first row in Word and turn on Layout > Repeat "
+                    "Header Rows.",
+                )
             )
         if change == "headings" and element.attrs.get("outline_level"):
             element.attrs["outline_level"] = 0
             element.accessibility.status = "needs_review"
-            issues.append(_undone(element.id, "Making this line a heading", element))
+            issues.append(
+                _undone(
+                    element.id,
+                    "Making this line a heading",
+                    hit,
+                    "In Word, apply a Heading style to it instead.",
+                )
+            )
     return issues
 
 
-def _undone(element_id: str, what: str, element: Element) -> Issue:
-    page = element.render.pages[0]
+def _page_spans(ir: DocumentIR) -> dict[str, set[int]]:
+    # The pages each element covers: from its own page up to where the next element starts
+    ordered = [ir.elements[e] for c in ir.containers for e in c.element_ids]
+    # A table with nothing placed after it may run to the end of the document
+    last = END_OF_DOCUMENT
+    spans: dict[str, set[int]] = {}
+    for index, element in enumerate(ordered):
+        if not element.render.pages:
+            continue
+        start = element.render.pages[0]
+        end = start
+        if element.semantic_type == "table":
+            # The table ends where the next thing outside it starts
+            table = element.attrs.get("table")
+            following = next(
+                (
+                    e.render.pages[0]
+                    for e in ordered[index + 1 :]
+                    if e.render.pages and e.attrs.get("in_table") != table
+                ),
+                last,
+            )
+            end = max(start, following)
+        spans[element.id] = set(range(start, end + 1))
+    return spans
+
+
+def _undone(element_id: str, what: str, pages: list[int], advice: str) -> Issue:
+    where = f"page {pages[0]}" if len(pages) == 1 else f"pages {pages[0]} to {pages[-1]}"
     return Issue(
         element_id=element_id,
         code="layout_change_undone",
         severity="warning",
-        message=f"{what} changed how page {page} looks, so it was undone. Check it in Word.",
-        details={"page": page},
+        message=f"{what} changed how {where} looked, so it was undone. {advice}",
+        details={"page": pages[0], "pages": pages},
     )
 
 

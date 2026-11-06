@@ -152,20 +152,23 @@ class _Builder:
             table = next(node.iterancestors(w("tbl")), None)
             in_table = table is not None
             in_textbox = any(True for _ in node.iterancestors(w("txbxContent")))
+            within: int | None = None
             if in_table:
                 outer = table
                 for ancestor in table.iterancestors(w("tbl")):
                     outer = ancestor
-                if outer.get(_mark("table")) is not None and not _seen(outer):
-                    self._add_table(outer, int(outer.get(_mark("table"))))
+                if outer.get(_mark("table")) is not None:
+                    within = int(outer.get(_mark("table")))
+                    if not _seen(outer):
+                        self._add_table(outer, within)
             elif text and not in_textbox:
                 self._add_paragraph(node, index, text, body_size)
             for drawing in node.iter(f"{{{WP_NS}}}docPr", f"{{{V_NS}}}shape"):
                 if drawing.get(_mark("figure")) is not None:
-                    self._add_figure(drawing, int(drawing.get(_mark("figure"))), index)
+                    self._add_figure(drawing, int(drawing.get(_mark("figure"))), index, within)
             for equation in node.iter(f"{{{M_NS}}}oMath"):
                 if equation.get(_mark("math")) is not None:
-                    self._add_math(equation, int(equation.get(_mark("math"))), index)
+                    self._add_math(equation, int(equation.get(_mark("math"))), index, within)
             self._links(node, index)
         self._foreign_runs(root)
 
@@ -260,7 +263,9 @@ class _Builder:
         )
         self._add(element)
 
-    def _add_figure(self, node: etree._Element, index: int, paragraph: int) -> None:
+    def _add_figure(
+        self, node: etree._Element, index: int, paragraph: int, within: int | None
+    ) -> None:
         kind, subtype = _figure_kind(node)
         description, decorative = _alt_state(node)
         element_id = self.allocator.allocate(self._container().id, "figure")
@@ -271,6 +276,7 @@ class _Builder:
             "paragraph": paragraph,
             "order": int(node.get(_mark("order"), "0")),
             "existing_alt": description,
+            "in_table": within,
         }
         media = _media_part(node, self.relationships)
         if media is not None:
@@ -297,7 +303,9 @@ class _Builder:
         self._add(element)
         self.figure_ids.append(element_id)
 
-    def _add_math(self, node: etree._Element, index: int, paragraph: int) -> None:
+    def _add_math(
+        self, node: etree._Element, index: int, paragraph: int, within: int | None
+    ) -> None:
         # Word reads its own equations aloud; the tagged PDF needs them as text
         text = math_text(node)
         element_id = self.allocator.allocate(self._container().id, "formula")
@@ -309,6 +317,7 @@ class _Builder:
                 "math": index,
                 "paragraph": paragraph,
                 "order": int(node.get(_mark("order"), "0")),
+                "in_table": within,
             },
             fingerprint=fingerprint_source(f"m|{index}|{text}"),
             source=_source(index, "math"),

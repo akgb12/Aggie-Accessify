@@ -93,7 +93,7 @@ def _paragraph(
     )
 
 
-def _document(root: Path, name: str = "handout.docx") -> Path:
+def _document(root: Path, name: str = "handout.docx", core: bool = True) -> Path:
     # A small handout: a bold line that looks like a heading, styled headings that skip a
     # level, a picture with a file name for alt text, a table, an equation and a run of
     # English text marked as French
@@ -143,7 +143,8 @@ def _document(root: Path, name: str = "handout.docx") -> Path:
         package.writestr("word/document.xml", document)
         package.writestr("word/styles.xml", styles)
         package.writestr("word/media/image1.png", image.getvalue())
-        package.writestr("docProps/core.xml", _CORE)
+        if core:
+            package.writestr("docProps/core.xml", _CORE)
     return path
 
 
@@ -250,3 +251,21 @@ def _roles(pdf: pikepdf.Pdf) -> list[str]:
         children = list(kids) if isinstance(kids, pikepdf.Array) else [kids]
         pending.extend(kid for kid in children if isinstance(kid, pikepdf.Dictionary))
     return found
+
+
+def test_a_document_saved_without_properties_gets_a_title(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    _document(root, core=False)
+    bundle, adapter, ir = _ir(root)
+    written = adapter.write_back(
+        bundle, ir, tmp_path / "out", tmp_path / "changes.diff", tmp_path / "v", None, 60
+    )
+    with zipfile.ZipFile(written.project_root / "handout.docx") as package:
+        core = package.read("docProps/core.xml").decode()
+        types = package.read("[Content_Types].xml").decode()
+        relationships = package.read("_rels/.rels").decode()
+    # With no outline decided, the first heading names the document
+    assert "<dc:title>Background</dc:title>" in core
+    assert 'PartName="/docProps/core.xml"' in types
+    assert 'Target="docProps/core.xml"' in relationships

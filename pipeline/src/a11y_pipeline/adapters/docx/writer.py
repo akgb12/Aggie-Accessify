@@ -31,6 +31,17 @@ from a11y_pipeline.bundle.bundle import Bundle
 from a11y_pipeline.ir.models import DocumentIR, Element, Issue
 from a11y_pipeline.synthesis.plan import OutputOperation
 
+CONTENT_TYPES_PART = "[Content_Types].xml"
+PACKAGE_RELATIONSHIPS_PART = "_rels/.rels"
+CORE_TYPE = "application/vnd.openxmlformats-package.core-properties+xml"
+CORE_RELATIONSHIP = (
+    "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"
+)
+EMPTY_CORE = (
+    b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    b'<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/'
+    b'core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"></cp:coreProperties>'
+)
 # Paragraph properties that must come after w:outlineLvl in Word's schema order
 AFTER_OUTLINE_LEVEL = {"divId", "cnfStyle", "rPr", "sectPr", "pPrChange"}
 # Run properties that must come after w:lang
@@ -125,7 +136,7 @@ def _collect_edits(ir: DocumentIR) -> tuple[DocumentEdits, list[OutputOperation]
                 operation("set_run_language", element.id, runs=sorted(edits.english_runs))
             proposed = " ".join(str(element.content.get("text") or "").split())
             if element.attrs.get("needs_title"):
-                edits.title = proposed or ir.metadata.get("title_proposed") or None
+                edits.title = proposed or _fallback_title(ir)
     language = ir.metadata.get("language_proposed") or ir.metadata.get("language") or None
     edits.language = language
     if ir.metadata.get("language_proposed"):
@@ -134,6 +145,23 @@ def _collect_edits(ir: DocumentIR) -> tuple[DocumentEdits, list[OutputOperation]
     if edits.title:
         operation("set_document_title", None, title=edits.title)
     return edits, operations, issues
+
+
+def _fallback_title(ir: DocumentIR) -> str | None:
+    # Every document gets a title: its Title line, else its first heading, else its file name
+    if ir.metadata.get("title_proposed"):
+        return ir.metadata["title_proposed"]
+    for container in ir.containers:
+        for element_id in container.element_ids:
+            element = ir.elements[element_id]
+            heading = element.semantic_type == "heading" or int(
+                element.attrs.get("outline_level") or 0
+            )
+            text = " ".join(str(element.content.get("text") or "").split())
+            if heading and text:
+                return text[:120]
+    stem = Path(ir.main_file).stem.replace("_", " ").replace("-", " ")
+    return " ".join(stem.split()) or None
 
 
 def _alt_missing(element: Element) -> Issue:
@@ -151,6 +179,8 @@ def _rewrite_package(document: Path, edits: DocumentEdits) -> bytes:
     temporary = document.with_suffix(".docx.tmp")
     original = b""
     with zipfile.ZipFile(document) as source, zipfile.ZipFile(temporary, "w") as target:
+        names = set(source.namelist())
+        add_core = CORE_PART not in names and bool(edits.title or edits.language)
         for item in source.infolist():
             data = source.read(item.filename)
             if item.filename == DOCUMENT_PART:
@@ -160,7 +190,15 @@ def _rewrite_package(document: Path, edits: DocumentEdits) -> bytes:
                 data = _set_default_language(data, edits.default_language)
             elif item.filename == CORE_PART:
                 data = set_core_properties(data, edits.title, edits.language)
+            elif add_core and item.filename == CONTENT_TYPES_PART:
+                data = _register_core_type(data)
+            elif add_core and item.filename == PACKAGE_RELATIONSHIPS_PART:
+                data = _register_core_relationship(data)
             target.writestr(item, data, compress_type=item.compress_type)
+        if add_core:
+            # A document saved without properties gets the part Word itself would write, so
+            # the title and language have somewhere to live
+            target.writestr(CORE_PART, set_core_properties(EMPTY_CORE, edits.title, edits.language))
     temporary.replace(document)
     return original
 
@@ -216,6 +254,29 @@ def _set_fallback_alt(node: etree._Element, description: str) -> None:
         return
     for shape in fallback.iter(f"{{{V_NS}}}shape", f"{{{V_NS}}}group", f"{{{V_NS}}}rect"):
         shape.set("alt", description)
+
+
+def _register_core_type(data: bytes) -> bytes:
+    root = etree.fromstring(data)
+    namespace = etree.QName(root).namespace
+    override = etree.SubElement(root, f"{{{namespace}}}Override")
+    override.set("PartName", f"/{CORE_PART}")
+    override.set("ContentType", CORE_TYPE)
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def _register_core_relationship(data: bytes) -> bytes:
+    root = etree.fromstring(data)
+    namespace = etree.QName(root).namespace
+    taken = {node.get("Id") for node in root}
+    number = 1
+    while f"rId{number}" in taken:
+        number += 1
+    relationship = etree.SubElement(root, f"{{{namespace}}}Relationship")
+    relationship.set("Id", f"rId{number}")
+    relationship.set("Type", CORE_RELATIONSHIP)
+    relationship.set("Target", CORE_PART)
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
 def _set_header_row(table: etree._Element) -> None:
