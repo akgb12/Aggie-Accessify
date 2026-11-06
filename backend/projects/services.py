@@ -192,6 +192,7 @@ def build_review(run: Run) -> dict[str, object]:
             {
                 "id": element_id,
                 "type": element["semantic_type"],
+                "subtype": element.get("subtype"),
                 "role": accessibility.get("role"),
                 "status": accessibility["status"],
                 "pages": render["pages"],
