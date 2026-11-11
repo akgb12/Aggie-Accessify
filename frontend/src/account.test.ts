@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatUsd, initials, passwordProblem, readCookie, usernameProblem } from './account'
+import { formatUsd, initials, limitUsedPercent, passwordProblem, readCookie, usernameProblem } from './account'
 
 describe('readCookie', () => {
   it('finds one cookie among several', () => {
@@ -45,5 +45,17 @@ describe('formatUsd', () => {
     expect(formatUsd(0)).toBe('$0.00')
     expect(formatUsd(0.004)).toBe('<$0.01')
     expect(formatUsd(1.234)).toBe('$1.23')
+  })
+})
+
+describe('limitUsedPercent', () => {
+  it('counts what is spent or held back against the limit', () => {
+    expect(limitUsedPercent(20, 20)).toBe(0)
+    expect(limitUsedPercent(20, 15)).toBe(25)
+    expect(limitUsedPercent(20, 0)).toBe(100)
+  })
+  it('stays between 0 and 100', () => {
+    expect(limitUsedPercent(20, 25)).toBe(0)
+    expect(limitUsedPercent(0, 0)).toBe(100)
   })
 })

@@ -39,3 +39,9 @@ export function usernameProblem(username: string): string | null {
 export function formatUsd(value: number): string {
   return value > 0 && value < 0.01 ? '<$0.01' : `$${value.toFixed(2)}`
 }
+
+// How much of the usage limit is used or held for running runs, as a whole percent from 0 to 100
+export function limitUsedPercent(limit: number, remaining: number): number {
+  if (limit <= 0) return 100
+  return Math.min(100, Math.max(0, Math.round(((limit - remaining) / limit) * 100)))
+}

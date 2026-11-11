@@ -35,6 +35,10 @@ export interface Usage {
   output_tokens: number
   cost_usd: number
   cost_usd_this_month: number
+  // The account's hard limit on model spend, what it has spent in total, and what is left
+  limit_usd: number
+  spent_usd: number
+  remaining_usd: number
 }
 
 export interface ProjectFile {

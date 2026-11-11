@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
-import { formatUsd, fullName, passwordProblem } from '../account'
+import { formatUsd, fullName, limitUsedPercent, passwordProblem } from '../account'
 import { useAuth, useUser } from '../authContext'
 import { errorMessage } from '../errors'
 import type { Usage } from '../types'
@@ -324,7 +324,7 @@ function UsageTab() {
         ['Projects', String(usage.projects)],
         ['Runs', `${usage.succeeded_runs} of ${usage.runs} finished`],
         ['Spend this month', formatUsd(usage.cost_usd_this_month)],
-        ['Spend, all time', formatUsd(usage.cost_usd)],
+        ['Spend, all time', formatUsd(usage.spent_usd)],
         ['Model use (tokens in / out)', `${usage.input_tokens.toLocaleString()} / ${usage.output_tokens.toLocaleString()}`],
       ]
     : []
@@ -333,6 +333,7 @@ function UsageTab() {
     <Section title="Usage">
       {error && <Alert tone="danger">{error}</Alert>}
       {!usage && !error && <Skeleton className="h-40" />}
+      {usage && <UsageLimit usage={usage} />}
       {usage && (
         <dl className="divide-y divide-slate-100">
           {stats.map(([label, value]) => (
@@ -341,12 +342,49 @@ function UsageTab() {
               <dd className="font-semibold tabular-nums text-slate-900">{value}</dd>
             </div>
           ))}
-          <div className="py-3 text-sm text-slate-600">
-            Credits are not enabled yet. Spend is tracked here so a university budget can be tied to your
-            account later.
-          </div>
         </dl>
       )}
     </Section>
+  )
+}
+
+function UsageLimit({ usage }: { usage: Usage }) {
+  const percent = limitUsedPercent(usage.limit_usd, usage.remaining_usd)
+  const reached = usage.remaining_usd <= 0
+  return (
+    <div className="space-y-3 py-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+        <p className="font-semibold text-slate-900">Usage limit</p>
+        <p className="tabular-nums text-slate-700">
+          <span className="font-semibold text-slate-900">{formatUsd(usage.limit_usd - usage.remaining_usd)}</span> of{' '}
+          {formatUsd(usage.limit_usd)} used
+        </p>
+      </div>
+      <div
+        role="meter"
+        aria-label="Usage limit used"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+        aria-valuetext={`${formatUsd(usage.remaining_usd)} of ${formatUsd(usage.limit_usd)} left`}
+        className="h-2 overflow-hidden rounded-full border border-slate-300 bg-slate-50"
+      >
+        <div
+          className={cx('h-full', reached ? 'bg-danger' : 'bg-brand-800')}
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+      {reached ? (
+        <Alert tone="danger">
+          This account has used its {formatUsd(usage.limit_usd)} limit, so no more runs can start. Contact the
+          Aggie Accessify team to raise it.
+        </Alert>
+      ) : (
+        <p className="text-sm text-slate-600">
+          {formatUsd(usage.remaining_usd)} left. Runs stop when the limit is reached. Running a file again,
+          not from scratch, reuses earlier answers, so it usually costs nothing.
+        </p>
+      )}
+    </div>
   )
 }
