@@ -11,6 +11,7 @@ from a11y_pipeline.ir.models import Candidate, DocumentIR, Issue, Patch
 from a11y_pipeline.orchestration.effort import Effort
 from a11y_pipeline.orchestration.stopping import StopReason
 from a11y_pipeline.routing.router import RoutedTask
+from a11y_pipeline.runs.known_descriptions import KnownDescriptions
 
 
 class RunState(BaseModel):
@@ -54,4 +55,4 @@ class RunState(BaseModel):
     final_ir: DocumentIR | None = None
     blocked: bool = False
     # Descriptions earlier runs wrote into the file, so they are read back as they were made
-    known_descriptions: dict[str, tuple[str, str | None]] = Field(default_factory=dict)
+    known_descriptions: KnownDescriptions = Field(default_factory=dict)

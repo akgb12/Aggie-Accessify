@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from a11y_pipeline.adapters.pptx.writer import decorative_now
 from a11y_pipeline.capabilities.base import FigureJudgeOutput
 from a11y_pipeline.evaluation.concepts import delivered_description, evaluate_coverage
 from a11y_pipeline.evaluation.scores import figure_accessibility_score
@@ -10,6 +11,8 @@ from a11y_pipeline.ir.patches import apply_patches
 
 # A judged figure never scores above its verdict; provisional like the other score weights
 JUDGE_SCORES = {"good": 100.0, "needs_work": 70.0, "bad": 30.0}
+# Formats whose update marks a picture decorative when the describer judged it so
+DECORATIVE_WRITING_FORMATS = {"pptx", "docx"}
 
 
 @dataclass(frozen=True)
@@ -57,8 +60,9 @@ def evaluate_candidate(
     judged = judged_by_element or {}
     coverage_by_element: dict[str, float | None] = {}
     for element in document.elements.values():
-        # A figure marked decorative is meant to be skipped by screen readers
-        if element.semantic_type != "figure" or element.accessibility.decorative:
+        # A figure marked decorative, now or by the update, is meant to be skipped by screen
+        # readers, so the score counts what the updated file holds
+        if element.semantic_type != "figure" or _delivered_decorative(document, element):
             continue
         coverage = evaluate_coverage(
             delivered_description(element),
@@ -121,6 +125,12 @@ def evaluate_candidate(
         document=document,
         failing_element_ids=failing,
     )
+
+
+def _delivered_decorative(document: DocumentIR, element: Element) -> bool:
+    if element.accessibility.decorative:
+        return True
+    return document.source_format in DECORATIVE_WRITING_FORMATS and decorative_now(element)
 
 
 def _judge_issues(element_id: str, verdict: FigureJudgeOutput) -> list[Issue]:

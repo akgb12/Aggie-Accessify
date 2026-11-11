@@ -484,6 +484,13 @@ def _add_diagrams_and_decoration(slide: _SlideContext) -> None:
         description, already = _alt_state(slide.shapes[box.shape_id])
         if not already and not description:
             decorative.append(box.shape_id)
+        elif not already and not is_junk_alt(description):
+            # A lone shape with a description is read out, so it counts as a described figure;
+            # this is how a diagram described earlier reads once its other parts are decorative
+            element = _diagram_element(slide, [box])
+            if element is not None:
+                slide.elements[element.id] = element
+                slide.container.element_ids.append(element.id)
     slide.container.attrs["decorative_shape_ids"] = decorative
 
 
