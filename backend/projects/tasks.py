@@ -8,8 +8,11 @@ from django.utils import timezone
 
 from a11y_pipeline.cli import _model_client
 from a11y_pipeline.config import Settings
+from a11y_pipeline.models.client import ModelClient, ModelRequest, ModelResponse
+from a11y_pipeline.orchestration.effort import dollar_cap
 from a11y_pipeline.runs.folder import RunBlockedError, run_to_folder
 from a11y_pipeline.runs.outputs import OUTPUTS_VERSION, refresh_run_outputs
+from accounts.usage import charge_run, limit_message, reserve_run_budget
 from projects.models import Run
 from projects.storage import (
     download_run_files,
@@ -34,41 +37,70 @@ REFRESH_INPUTS = [
 @task
 def run_pipeline_task(run_id: str) -> str:
     # Run one queued project through the complete pipeline in a scratch folder
-    run = Run.objects.select_related("project").get(id=run_id)
-    run.status = Run.Status.RUNNING
-    run.started_at = timezone.now()
-    run.error_message = ""
-    run.save(update_fields=["status", "started_at", "error_message"])
+    run = Run.objects.select_related("project__owner").get(id=run_id)
+    pipeline_settings = Settings()
+    # The run may spend what its effort allows, but never more than its owner has left
+    granted = reserve_run_budget(run, Decimal(str(dollar_cap(run.effort, pipeline_settings))))
+    if granted is not None and granted <= 0:
+        run.status = Run.Status.FAILED
+        run.finished_at = timezone.now()
+        run.stop_reason = "usage_limit"
+        run.error_message = limit_message(run.project.owner)
+        run.save(update_fields=["status", "finished_at", "stop_reason", "error_message"])
+        return str(run.id)
+    meter: _SpendMeter | None = None
     try:
         with scratch_dir(f"run-{run.id}") as scratch:
             bundle_root = scratch / "bundle"
             output_root = scratch / "output"
             materialize_project(run.project, bundle_root)
-            pipeline_settings = Settings()
-            client = _model_client(pipeline_settings, fresh=run.fresh)
+            meter = _SpendMeter(_model_client(pipeline_settings, fresh=run.fresh))
             try:
                 completed = run_to_folder(
                     bundle_root,
-                    client,
+                    meter,
                     pipeline_settings,
                     effort=run.effort,
                     main_file=run.main_file or None,
                     seed_weak_element_id=run.seed_weak,
                     output_root=output_root,
+                    max_cost_usd=float(granted) if granted is not None else None,
                 )
             except RunBlockedError as error:
                 upload_run_folder(run.id, error.folder.root, SKIPPED_RUN_FOLDERS)
                 _update_run_from_manifest(run, error.folder.root, Run.Status.BLOCKED)
+                charge_run(run)
                 return str(run.id)
             upload_run_folder(run.id, completed.folder.root, SKIPPED_RUN_FOLDERS)
             _update_completed_run(run, completed.folder.root, completed)
+            charge_run(run)
     except Exception as error:
-        run.status = Run.Status.FAILED
-        run.finished_at = timezone.now()
-        run.error_message = _user_message(error)
-        run.save(update_fields=["status", "finished_at", "error_message"])
+        if run.status == Run.Status.RUNNING:
+            # A run that fails partway has still paid for the model calls it made
+            run.status = Run.Status.FAILED
+            run.finished_at = timezone.now()
+            run.error_message = _user_message(error)
+            run.cost_usd = Decimal(str(meter.spent_usd if meter is not None else 0))
+            run.save(update_fields=["status", "finished_at", "error_message", "cost_usd"])
+            charge_run(run)
         raise
     return str(run.id)
+
+
+class _SpendMeter:
+    # Adds up what model calls cost, including calls that failed after they were billed
+    def __init__(self, client: ModelClient) -> None:
+        self.client = client
+        self.spent_usd = 0.0
+
+    def complete_structured(self, request: ModelRequest) -> ModelResponse:
+        try:
+            response = self.client.complete_structured(request)
+        except Exception as error:
+            self.spent_usd += float(getattr(error, "cost_usd", 0) or 0)
+            raise
+        self.spent_usd += response.cost_usd
+        return response
 
 
 def _user_message(error: Exception) -> str:

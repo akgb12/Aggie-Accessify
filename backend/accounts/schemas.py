@@ -56,6 +56,11 @@ class UsageSchema(Schema):
     output_tokens: int
     cost_usd: float
     cost_usd_this_month: float
+    # The account's hard limit on model spend, what it has spent in total (runs in deleted
+    # projects included), and what is left once running runs are allowed for
+    limit_usd: float
+    spent_usd: float
+    remaining_usd: float
 
 
 class MessageSchema(Schema):

@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.db import models
 
@@ -5,6 +7,9 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "default_effort": "medium",
     "show_demo_options": False,
 }
+
+# Every account may spend this much on model calls in total until someone raises its limit
+DEFAULT_USAGE_LIMIT_USD = Decimal("20.00")
 
 
 def default_preferences() -> dict[str, object]:
@@ -27,6 +32,12 @@ class User(AbstractBaseUser):
     first_name = models.CharField(max_length=80)
     last_name = models.CharField(max_length=80)
     preferences = models.JSONField(default=default_preferences)
+    # A hard cap on model spend, and what the account has spent. Spend is kept here rather
+    # than summed from runs, so deleting projects does not give the money back.
+    usage_limit_usd = models.DecimalField(
+        max_digits=10, decimal_places=2, default=DEFAULT_USAGE_LIMIT_USD
+    )
+    spent_usd = models.DecimalField(max_digits=12, decimal_places=6, default=Decimal(0))
     created_at = models.DateTimeField(auto_now_add=True)
 
     objects = UserManager()

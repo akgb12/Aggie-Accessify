@@ -23,6 +23,7 @@ from accounts.schemas import (
     UsageSchema,
     UserSchema,
 )
+from accounts.usage import remaining_usd
 from projects.models import Project, Run
 from projects.services import delete_project_completely
 
@@ -179,6 +180,9 @@ def usage(request):
         "output_tokens": totals["output"] or 0,
         "cost_usd": float(totals["cost"] or 0),
         "cost_usd_this_month": float(month["cost"] or 0),
+        "limit_usd": float(request.user.usage_limit_usd),
+        "spent_usd": float(request.user.spent_usd),
+        "remaining_usd": float(remaining_usd(request.user)),
     }
 
 

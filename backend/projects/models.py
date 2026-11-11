@@ -70,6 +70,8 @@ class Run(models.Model):
     input_tokens = models.PositiveBigIntegerField(default=0)
     output_tokens = models.PositiveBigIntegerField(default=0)
     cost_usd = models.DecimalField(max_digits=12, decimal_places=6, default=0)
+    # What the run was allowed to spend from its owner's usage limit while it ran
+    budget_usd = models.DecimalField(max_digits=12, decimal_places=6, default=0)
     error_message = models.TextField(blank=True)
     # Which version of the downloads the run holds, and whether it is being brought up to date
     outputs_version = models.PositiveIntegerField(default=0)
