@@ -88,7 +88,8 @@ class PptxAdapter:
                 continue
             slide_title, nearby = figure_context(ir, element)
             labels = [str(label) for label in element.attrs.get("labels", [])]
-            if element.subtype == "diagram":
+            if element.subtype == "diagram" and not element.fidelity.required_concepts:
+                # An earlier run's terms stay: read back, a diagram may have lost its labels
                 concepts = build_figure_concepts(element, nearby, labels, [])
                 element.fidelity.required_concepts = list(concepts.required)
                 element.fidelity.excluded_concepts = list(concepts.excluded)

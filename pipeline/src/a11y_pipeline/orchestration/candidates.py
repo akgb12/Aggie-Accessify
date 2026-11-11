@@ -20,6 +20,8 @@ class CandidateEvaluation:
     candidate: Candidate
     document: DocumentIR
     failing_element_ids: list[str]
+    # Each counted figure's score, which an earlier description is compared against
+    figure_scores: dict[str, float]
 
 
 def evaluate_candidate(
@@ -55,7 +57,7 @@ def evaluate_candidate(
                 details=veto.details,
             )
         )
-    figure_scores: list[float] = []
+    figure_scores: dict[str, float] = {}
     flagged: set[str] = set()
     judged = judged_by_element or {}
     coverage_by_element: dict[str, float | None] = {}
@@ -91,7 +93,7 @@ def evaluate_candidate(
             issues.extend(_judge_issues(element.id, verdict))
             if verdict.verdict != "good":
                 flagged.add(element.id)
-        figure_scores.append(score)
+        figure_scores[element.id] = score
         if coverage.applicable and coverage.coverage is not None:
             if coverage.coverage < coverage_threshold:
                 issues.append(
@@ -112,7 +114,7 @@ def evaluate_candidate(
     )
     score_a = 100.0
     if figure_scores:
-        score_a = sum(figure_scores) / len(figure_scores)
+        score_a = sum(figure_scores.values()) / len(figure_scores)
     score_f = 100.0
     if vetoes:
         score_f = 0.0
@@ -124,6 +126,16 @@ def evaluate_candidate(
         candidate=evaluated,
         document=document,
         failing_element_ids=failing,
+        figure_scores=figure_scores,
+    )
+
+
+def figure_score_ceiling(element: Element) -> float:
+    # The most a figure can score: one without terms to cover is never scored above 60
+    return (
+        100.0
+        if element.fidelity.required_concepts
+        else figure_accessibility_score(alt_present=True, coverage=None, warning_count=0)
     )
 
 

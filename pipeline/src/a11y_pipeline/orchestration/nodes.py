@@ -1,7 +1,7 @@
 import hashlib
 
 from a11y_pipeline.adapters import adapter_name_for, get_adapter
-from a11y_pipeline.analysis.needs import analyze_needs
+from a11y_pipeline.analysis.needs import Task, analyze_needs
 from a11y_pipeline.budget import BudgetExceeded
 from a11y_pipeline.bundle.bundle import Bundle
 from a11y_pipeline.capabilities.base import (
@@ -15,10 +15,11 @@ from a11y_pipeline.capabilities.feedback import repair_problems
 from a11y_pipeline.capabilities.figure_judge import FigureJudgeCapability
 from a11y_pipeline.capabilities.quote_check import QuoteCheckCapability
 from a11y_pipeline.capabilities.text_inventory import TextInventoryCapability
+from a11y_pipeline.evaluation.concepts import delivered_description
 from a11y_pipeline.evaluation.vetoes import unknown_quoted_labels
 from a11y_pipeline.ir.models import Candidate, DocumentIR, HistoryEntry, Issue, Patch
 from a11y_pipeline.ir.patches import apply_patches
-from a11y_pipeline.orchestration.candidates import evaluate_candidate
+from a11y_pipeline.orchestration.candidates import evaluate_candidate, figure_score_ceiling
 from a11y_pipeline.orchestration.effort import (
     ELEMENT_REPAIR_LIMIT,
     dollar_cap,
@@ -28,7 +29,10 @@ from a11y_pipeline.orchestration.selection import accepts_candidate, select_best
 from a11y_pipeline.orchestration.state import RunState
 from a11y_pipeline.orchestration.stopping import StopContext, decide_stop
 from a11y_pipeline.routing.router import route
-from a11y_pipeline.runs.known_descriptions import restore_known_descriptions
+from a11y_pipeline.runs.known_descriptions import (
+    EARLIER_DESCRIPTION,
+    restore_known_descriptions,
+)
 
 SEED_WEAK_TEXT = "Five boxes in a row, one is blue."
 
@@ -85,16 +89,39 @@ def compile_and_map_node(state: RunState) -> dict[str, object]:
     )
     return {
         "base_ir": prepared.ir,
-        "figure_inputs": prepared.figure_inputs,
+        "figure_inputs": _with_earlier_quotes(prepared.ir, prepared.figure_inputs),
         "original_pdf": prepared.original_pdf,
         "marked_pdf": prepared.marked_pdf,
         "issues": list(prepared.ir.issues),
     }
 
 
+def _with_earlier_quotes(
+    document: DocumentIR, figure_inputs: dict[str, FigureDescriptionInput]
+) -> dict[str, FigureDescriptionInput]:
+    # The run that wrote an earlier description checked its quotes against this figure, some
+    # against the image itself, so they count as drawn in it rather than being rejected unseen
+    updated = dict(figure_inputs)
+    for element_id in _earlier_figures(document):
+        capability_input = updated.get(element_id)
+        if capability_input is None:
+            continue
+        element = document.elements[element_id]
+        quotes = unknown_quoted_labels(
+            delivered_description(element),
+            capability_input.visible_labels,
+            capability_input.rendered_text,
+        )
+        if quotes:
+            updated[element_id] = capability_input.model_copy(
+                update={"rendered_text": [*capability_input.rendered_text, *quotes]}
+            )
+    return updated
+
+
 def build_c0_node(state: RunState) -> dict[str, object]:
     # Build and evaluate deterministic fallback c0
-    base_ir = _require_base_ir(state)
+    base_ir = _with_earlier_descriptions_kept(_require_base_ir(state))
     candidate = Candidate(candidate_id="c0", round=0, patches=[])
     evaluation = evaluate_candidate(
         base_ir,
@@ -105,18 +132,40 @@ def build_c0_node(state: RunState) -> dict[str, object]:
         _rendered_text(state),
     )
     return {
+        "base_ir": base_ir,
         "candidates": [evaluation.candidate],
         "candidate_ir": evaluation.document,
         "failing_element_ids": evaluation.failing_element_ids,
         "selected_candidate_id": "c0",
         "active_patches": [],
+        "baseline_figure_scores": evaluation.figure_scores,
     }
+
+
+def _with_earlier_descriptions_kept(base_ir: DocumentIR) -> DocumentIR:
+    # A description an earlier run wrote is where this run starts from: the figure counts as
+    # described, so c0 scores the file as it is
+    earlier = _earlier_figures(base_ir)
+    if not earlier:
+        return base_ir
+    updated = base_ir.model_copy(deep=True)
+    for element_id in earlier:
+        updated.elements[element_id].accessibility.status = "model_generated"
+    return updated
+
+
+def _earlier_figures(document: DocumentIR) -> list[str]:
+    return [
+        element.id
+        for element in document.elements.values()
+        if element.semantic_type == "figure" and element.attrs.get(EARLIER_DESCRIPTION)
+    ]
 
 
 def analyze_needs_node(state: RunState) -> dict[str, object]:
     # Find all initial model tasks
     base_ir = _require_base_ir(state)
-    tasks = analyze_needs(base_ir)
+    tasks = analyze_needs(base_ir) + _improvable_earlier_figures(state, base_ir)
     element_ids: list[str] = []
     for task in tasks:
         element_ids.append(task.element_id)
@@ -125,6 +174,27 @@ def analyze_needs_node(state: RunState) -> dict[str, object]:
         "pending_element_ids": element_ids,
         "current_round": 0,
     }
+
+
+def _improvable_earlier_figures(state: RunState, base_ir: DocumentIR) -> list[Task]:
+    # An earlier run's description is tried again only when its score has room to grow; one
+    # already at the most its figure can score is kept without spending anything
+    tasks: list[Task] = []
+    for element_id in _earlier_figures(base_ir):
+        score = state.baseline_figure_scores.get(element_id)
+        element = base_ir.elements[element_id]
+        if score is None or element_id not in state.figure_inputs:
+            continue
+        if score >= figure_score_ceiling(element):
+            continue
+        tasks.append(
+            Task(
+                element_id=element_id,
+                capability="figure_description",
+                reason="An earlier run's description may be improved",
+            )
+        )
+    return tasks
 
 
 def route_node(state: RunState) -> dict[str, object]:
@@ -149,7 +219,10 @@ def run_capabilities_node(state: RunState) -> dict[str, object]:
             results.append(_seed_weak_result(state, element_id))
             continue
         capability_input = state.figure_inputs.get(element_id)
-        if capability_input is not None and state.current_round > 0:
+        # A figure retried from an earlier run's description is shown it and its problems, as
+        # a repair would be
+        retried = base_ir is not None and element_id in _earlier_figures(base_ir)
+        if capability_input is not None and (state.current_round > 0 or retried):
             capability_input = _with_repair_feedback(state, capability_input)
         if capability_input is None:
             results.append(_missing_input_result(state, element_id))
@@ -299,7 +372,9 @@ def synthesize_node(state: RunState) -> dict[str, object]:
 def evaluate_node(state: RunState) -> dict[str, object]:
     # Evaluate the synthesized cumulative candidate
     base_ir = _require_base_ir(state)
-    candidate = _pending_candidate(state)
+    candidate, active_patches = _keep_better_descriptions(
+        state, base_ir, _pending_candidate(state), list(state.active_patches)
+    )
     evaluation = _evaluate(state, base_ir, candidate, {})
     judgments = dict(state.judgments)
     budget_exhausted = state.budget_exhausted
@@ -320,6 +395,7 @@ def evaluate_node(state: RunState) -> dict[str, object]:
         budget_spent = state.budget_controller.spent_usd
     return {
         "candidates": candidates,
+        "active_patches": active_patches,
         "candidate_ir": evaluation.document,
         "failing_element_ids": evaluation.failing_element_ids,
         "last_candidate_accepted": accepted,
@@ -330,6 +406,32 @@ def evaluate_node(state: RunState) -> dict[str, object]:
         "budget_exhausted": budget_exhausted,
         "budget_spent": budget_spent,
     }
+
+
+def _keep_better_descriptions(
+    state: RunState,
+    base_ir: DocumentIR,
+    candidate: Candidate,
+    active_patches: list[Patch],
+) -> tuple[Candidate, list[Patch]]:
+    # A new description replaces an earlier run's only when it scores higher, so no figure,
+    # and so not the A index, ever scores lower than the file the run started from
+    earlier = set(_earlier_figures(base_ir))
+    changed = {patch.element_id for patch in candidate.patches} & earlier
+    if not changed:
+        return candidate, active_patches
+    scores = _evaluate(state, base_ir, candidate, {}).figure_scores
+    worse = {
+        element_id
+        for element_id in changed
+        if scores.get(element_id, -1.0) <= state.baseline_figure_scores.get(element_id, 0.0)
+    }
+    if not worse:
+        return candidate, active_patches
+    kept = candidate.model_copy(
+        update={"patches": [p for p in candidate.patches if p.element_id not in worse]}
+    )
+    return kept, [patch for patch in active_patches if patch.element_id not in worse]
 
 
 def _floors(state: RunState) -> tuple[float, float]:
@@ -475,6 +577,15 @@ def finalize_node(state: RunState) -> dict[str, object]:
     final_ir = evaluation.document.model_copy(deep=True)
     for element_id in evaluation.failing_element_ids:
         final_ir.elements[element_id].accessibility.status = "needs_review"
+    for element_id in _earlier_figures(base_ir):
+        # A kept earlier description is already in the file, so the update leaves it alone
+        kept = base_ir.elements[element_id].accessibility
+        final = final_ir.elements[element_id].accessibility
+        if (final.alt_text, final.extended_description) == (
+            kept.alt_text,
+            kept.extended_description,
+        ):
+            final.locked = True
     return {
         "final_ir": final_ir,
         "selected_candidate_id": selected.candidate_id,

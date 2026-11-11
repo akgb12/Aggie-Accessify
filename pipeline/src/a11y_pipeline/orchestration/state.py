@@ -56,3 +56,5 @@ class RunState(BaseModel):
     blocked: bool = False
     # Descriptions earlier runs wrote into the file, so they are read back as they were made
     known_descriptions: KnownDescriptions = Field(default_factory=dict)
+    # What each figure scored before this run changed anything
+    baseline_figure_scores: dict[str, float] = Field(default_factory=dict)
