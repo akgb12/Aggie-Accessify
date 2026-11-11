@@ -8,7 +8,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "show_demo_options": False,
 }
 
-# Every account may spend this much on model calls in total until someone raises its limit
+# Every account may spend this much on model calls over its lifetime; the limit does not reset
 DEFAULT_USAGE_LIMIT_USD = Decimal("20.00")
 
 

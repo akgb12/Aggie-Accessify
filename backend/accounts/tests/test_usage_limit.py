@@ -47,7 +47,7 @@ def test_no_run_starts_once_the_limit_is_reached(client: Client, user: User) -> 
             path, data=json.dumps({"effort": "low"}), content_type="application/json"
         )
         assert response.status_code == 403
-        assert "$20.00 usage limit" in response.json()["detail"]
+        assert "$20.00 lifetime usage limit" in response.json()["detail"]
     assert not Run.objects.exists()
 
 

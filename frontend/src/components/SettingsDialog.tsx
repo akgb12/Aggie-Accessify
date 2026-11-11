@@ -354,7 +354,7 @@ function UsageLimit({ usage }: { usage: Usage }) {
   return (
     <div className="space-y-3 py-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-        <p className="font-semibold text-slate-900">Usage limit</p>
+        <p className="font-semibold text-slate-900">Lifetime usage limit</p>
         <p className="tabular-nums text-slate-700">
           <span className="font-semibold text-slate-900">{formatUsd(usage.limit_usd - usage.remaining_usd)}</span> of{' '}
           {formatUsd(usage.limit_usd)} used
@@ -376,12 +376,12 @@ function UsageLimit({ usage }: { usage: Usage }) {
       </div>
       {reached ? (
         <Alert tone="danger">
-          This account has used its {formatUsd(usage.limit_usd)} limit, so no more runs can start. Contact the
-          Aggie Accessify team to raise it.
+          This account has used its {formatUsd(usage.limit_usd)} lifetime limit, so no more runs can start.
+          Earlier results can still be viewed and downloaded.
         </Alert>
       ) : (
         <p className="text-sm text-slate-600">
-          {formatUsd(usage.remaining_usd)} left. Runs stop when the limit is reached. Running a file again,
+          {formatUsd(usage.remaining_usd)} left. The limit does not reset, and runs stop when it is reached. Running a file again,
           not from scratch, reuses earlier answers, so it usually costs nothing.
         </p>
       )}

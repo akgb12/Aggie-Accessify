@@ -30,8 +30,8 @@ def remaining_usd(user: User) -> Decimal:
 
 def limit_message(user: User) -> str:
     return (
-        f"This account has used its ${user.usage_limit_usd:.2f} usage limit, so no more runs "
-        "can start. Contact the Aggie Accessify team to raise it."
+        f"This account has used its ${user.usage_limit_usd:.2f} lifetime usage limit, so no "
+        "more runs can start. Earlier results can still be viewed and downloaded."
     )
 
 
