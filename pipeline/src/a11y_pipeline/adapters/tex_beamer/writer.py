@@ -1,10 +1,12 @@
 import difflib
+import json
 import re
 import shutil
 import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 
+from a11y_pipeline.adapters.tex_beamer.colours import edits_from_records, locate
 from a11y_pipeline.adapters.tex_beamer.compile import (
     CompileError,
     CompileResult,
@@ -55,6 +57,7 @@ def write_updated_project(
     edits: dict[str, list[tuple[int, int, str]]] = {}
     _add_metadata_edit(ir, original_text, edits, operations)
     _add_figure_edits(ir, original_text, edits, operations, issues)
+    _add_colour_edits(ir, original_text, edits, operations)
     _apply_source_edits(output_root, edits)
     if diff_path is None:
         diff_path = output_root.parent / "changes.diff"
@@ -178,6 +181,32 @@ def _add_figure_edits(
                 operation=operation,
                 element_id=element.id,
                 source_file=element.source.file,
+            )
+        )
+
+
+def _add_colour_edits(
+    ir: DocumentIR,
+    original_text: dict[str, str],
+    edits: dict[str, list[tuple[int, int, str]]],
+    operations: list[OutputOperation],
+) -> None:
+    # Write the readable shades chosen for faint text colours
+    records = json.loads(ir.metadata.get("contrast_fixes", "[]"))
+    for edit in edits_from_records(records):
+        text = original_text.get(edit.file)
+        if text is None:
+            continue
+        start = locate(text, edit)
+        if start is None:
+            continue
+        _append_edit(edits, edit.file, start, start + len(edit.old), edit.new)
+        operations.append(
+            OutputOperation(
+                output="updated_source",
+                operation="fix_text_contrast",
+                source_file=edit.file,
+                details={"line": edit.line, "before": edit.before, "after": edit.after},
             )
         )
 
