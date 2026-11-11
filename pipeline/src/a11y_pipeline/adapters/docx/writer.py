@@ -1,4 +1,5 @@
 import difflib
+import json
 import shutil
 import zipfile
 from dataclasses import dataclass, field
@@ -6,6 +7,7 @@ from pathlib import Path
 
 from lxml import etree
 
+from a11y_pipeline.adapters.docx.colors import set_run_colour
 from a11y_pipeline.adapters.docx.ooxml import (
     CORE_PART,
     DOCUMENT_PART,
@@ -59,6 +61,8 @@ class DocumentEdits:
     language: str | None = None
     default_language: str | None = None
     title: str | None = None
+    # New text colours as hex, by run position
+    recolours: dict[int, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -144,7 +148,31 @@ def _collect_edits(ir: DocumentIR) -> tuple[DocumentEdits, list[OutputOperation]
         operation("set_document_language", None, language=edits.default_language)
     if edits.title:
         operation("set_document_title", None, title=edits.title)
+    for fix in contrast_fixes(ir):
+        edits.recolours[int(fix["run"])] = str(fix["after"])
+        operation(
+            "fix_text_contrast", None, run=fix["run"], before=fix["before"], after=fix["after"]
+        )
     return edits, operations, issues
+
+
+def contrast_fixes(ir: DocumentIR) -> list[dict]:
+    # The text colour fixes chosen when the document was prepared
+    return [fix for fix in json.loads(ir.metadata.get("contrast_fixes", "[]")) if "after" in fix]
+
+
+def write_expected_document(bundle: Bundle, ir: DocumentIR, destination: Path) -> Path | None:
+    # The original document with only its colour fixes, which is how the update should look;
+    # None when nothing is recoloured
+    fixes = contrast_fixes(ir)
+    if not fixes:
+        return None
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(bundle.root / bundle.main_file, destination)
+    _rewrite_package(
+        destination, DocumentEdits(recolours={int(fix["run"]): str(fix["after"]) for fix in fixes})
+    )
+    return destination
 
 
 def _fallback_title(ir: DocumentIR) -> str | None:
@@ -226,6 +254,9 @@ def _edit_document(data: bytes, edits: DocumentEdits) -> bytes:
         if index < len(all_paragraphs):
             _set_outline_level(all_paragraphs[index], level)
     all_runs = runs(root)
+    for index, colour in edits.recolours.items():
+        if index < len(all_runs):
+            set_run_colour(all_runs[index], colour)
     for index in edits.english_runs:
         if index < len(all_runs) and edits.language:
             language = all_runs[index].find(f"{w('rPr')}/{w('lang')}")
@@ -382,6 +413,11 @@ def _write_diff(ir: DocumentIR, edits: DocumentEdits, original: bytes, diff_path
                 lines.append(
                     f'~ {where}: "{text}" is now a level {edits.headings[paragraph]} heading'
                 )
+    for fix in contrast_fixes(ir):
+        lines.append(
+            f"~ text colour #{fix['before']} -> #{fix['after']} so it can be read "
+            f"({fix['ratio_before']}:1 -> {fix['ratio_after']}:1): {fix['text'][:80]}"
+        )
     if edits.english_runs:
         lines.append(f"~ {len(edits.english_runs)} run(s) of text marked as {edits.language}")
     if edits.default_language:

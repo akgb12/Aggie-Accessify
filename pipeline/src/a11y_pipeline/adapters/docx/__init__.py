@@ -1,18 +1,22 @@
+import json
 import shutil
 import zipfile
 from pathlib import Path
 from typing import Any
 
 from a11y_pipeline.adapters.base import PreparedDocument, WrittenDocument
+from a11y_pipeline.adapters.docx.colors import WordRunColour, faint_runs
 from a11y_pipeline.adapters.docx.parser import parse
 from a11y_pipeline.adapters.docx.preflight import preflight
 from a11y_pipeline.adapters.docx.render import place_elements, render_document_pdf, render_marked
-from a11y_pipeline.adapters.docx.writer import write_updated_project
+from a11y_pipeline.adapters.docx.writer import write_expected_document, write_updated_project
 from a11y_pipeline.adapters.pptx.parser import picture_png
 from a11y_pipeline.adapters.rendered_words import DrawnWords
 from a11y_pipeline.bundle.bundle import Bundle
 from a11y_pipeline.capabilities.base import FigureDescriptionInput
 from a11y_pipeline.evaluation.concepts import build_figure_concepts
+from a11y_pipeline.evaluation.contrast import RGB, contrast_ratio, drawn_as
+from a11y_pipeline.evaluation.page_contrast import RenderedText
 from a11y_pipeline.ir.models import DocumentIR, Element, Issue
 from a11y_pipeline.render.crop import crop_pdf_bbox
 from a11y_pipeline.render.ocr import ocr_words
@@ -20,6 +24,8 @@ from a11y_pipeline.render.pixeldiff import PixelCheck, compare_pdf_pixels
 
 __all__ = ["DocxAdapter"]
 
+# Resolution for measuring text against its background
+CONTRAST_DPI = 110
 # OCR that finds fewer words than this has probably missed the picture's text
 MIN_OCR_WORDS = 5
 # How many lines the outline step sees from the top of the document, to find its title
@@ -60,6 +66,7 @@ class DocxAdapter:
         if rendered is not None:
             place_elements(ir, rendered, placements)
         media = _media(document, ir)
+        contrast = _plan_contrast_fixes(ir, document, rendered, run_root / "work" / "contrast")
         drawn_words = DrawnWords(rendered)
         figure_inputs: dict[str, FigureDescriptionInput] = {}
         issues: list[Issue] = []
@@ -99,7 +106,7 @@ class DocxAdapter:
                 rendered_text=drawn,
                 other_titles=other_titles,
             )
-        ir.issues.extend(issues)
+        ir.issues.extend(issues + contrast)
         return PreparedDocument(
             ir=ir,
             figure_inputs=figure_inputs,
@@ -122,6 +129,14 @@ class DocxAdapter:
         # written again.
         undone: list[Issue] = []
         changed: set[int] = set()
+        # The update should look like the original with only the text colours fixed for
+        # contrast changed
+        expected_pdf = original_pdf
+        expected = write_expected_document(
+            bundle, ir, verification_root / "expected" / Path(bundle.main_file).name
+        )
+        if original_pdf is not None and expected is not None:
+            expected_pdf = render_document_pdf(expected, verification_root / "expected" / "render")
         for attempt, change in enumerate(("all", "headers", "headings"), start=1):
             if change != "all":
                 undone.extend(_undo_on_pages(ir, changed, change))
@@ -129,12 +144,12 @@ class DocxAdapter:
                 shutil.rmtree(output_root)
             result = write_updated_project(bundle, ir, output_root, diff_path)
             changed = set()
-            if original_pdf is not None:
+            if expected_pdf is not None:
                 updated = render_document_pdf(
                     result.project_root / bundle.main_file, verification_root / str(attempt)
                 )
                 if updated is not None:
-                    changed = set(compare_pdf_pixels(original_pdf, updated).different_pages)
+                    changed = set(compare_pdf_pixels(expected_pdf, updated).different_pages)
             if not changed:
                 break
         issues = list(result.issues) + undone
@@ -161,6 +176,90 @@ class DocxAdapter:
                 different_pages=sorted(changed),
             ),
         )
+
+
+def _plan_contrast_fixes(
+    ir: DocumentIR, document: Path, rendered: Path | None, work: Path
+) -> list[Issue]:
+    # Choose a readable shade for each run of text too faint for its background. The colour
+    # comes from the XML; when the document could be rendered, the run must also be found on
+    # its page looking that colour, and the background is taken from the page, so text over
+    # a picture or a shaded shape is never recoloured on a guess.
+    pages = RenderedText(rendered, work, CONTRAST_DPI)
+    by_paragraph = {
+        int(element.attrs["paragraph"]): element
+        for element in ir.elements.values()
+        if element.attrs.get("paragraph") is not None
+    }
+    fixes: list[dict[str, object]] = []
+    issues: list[Issue] = []
+    for run in faint_runs(document):
+        background = run.background
+        element = by_paragraph.get(run.paragraph)
+        if rendered is not None:
+            measured = _measure_run(pages, run, element)
+            if measured is None:
+                continue
+            background = measured
+            if contrast_ratio(run.colour, background) >= run.required:
+                continue
+        record = run.record(background)
+        if "after" in record:
+            fixes.append(record)
+            continue
+        issues.append(
+            Issue(
+                element_id=element.id if element is not None else None,
+                code="low_contrast",
+                severity="warning",
+                message=(
+                    f'"{run.text[:40]}" is hard to read on its background (about '
+                    f"{record['ratio_before']}:1; at least {run.required:g}:1 is needed). "
+                    "No shade of its colour is readable there. "
+                    "Change the text or background colour."
+                ),
+                details={"ratio": record["ratio_before"], "required": run.required},
+            )
+        )
+    if fixes:
+        ir.metadata["contrast_fixes"] = json.dumps(fixes)
+        first = fixes[0]
+        issues.append(
+            Issue(
+                element_id=None,
+                code="contrast_fixed",
+                severity="info",
+                message=(
+                    f"{len(fixes)} run(s) of text too faint for their background now use a "
+                    f'readable shade of their colour, such as "{str(first["text"])[:40]}": '
+                    f"#{first['before']} became #{first['after']} ({first['ratio_before']}:1 "
+                    f"became {first['ratio_after']}:1)."
+                ),
+                details={"runs": len(fixes)},
+            )
+        )
+    return issues
+
+
+def _measure_run(pages: RenderedText, run: WordRunColour, element: Element | None) -> RGB | None:
+    # The background the page shows behind the run, found on its paragraph's page when that
+    # is known and anywhere else otherwise; None unless the page shows the run's own colour
+    candidates: list[tuple[int, tuple[float, ...] | None]] = []
+    if element is not None and element.render.pages and element.render.bbox is not None:
+        page = element.render.pages[0]
+        if page <= len(pages.sizes):
+            height = pages.sizes[page - 1][1]
+            left, bottom, right, top = element.render.bbox
+            candidates.append((page, (left, height - top, right, height - bottom)))
+    candidates.extend((page, None) for page in range(1, len(pages.sizes) + 1))
+    for page, box in candidates:
+        measured = pages.measure(page, box, run.text, run.colour)
+        if measured is None:
+            continue
+        text, background = measured
+        if drawn_as(text, run.colour, background):
+            return background
+    return None
 
 
 def _media(document: Path, ir: DocumentIR) -> dict[str, bytes]:
