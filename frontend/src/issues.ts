@@ -129,6 +129,11 @@ const WORDING: Record<string, IssueWording> = {
     title: 'Text is hard to read against its background',
     explanation: 'The text color is too close to the background. Use a darker or lighter color.',
   },
+  contrast_fixed: {
+    title: 'Faint text was made readable',
+    explanation:
+      'Text too close to its background color now uses a darker or lighter shade of the same color, so it can be read.',
+  },
   slide_missing_title: {
     title: 'Slide has no title',
     explanation: 'Screen reader users cannot find this slide in the slide list.',
