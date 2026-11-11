@@ -21,6 +21,22 @@ class ProjectFileSchema(Schema):
     size: int
     sha256: str
     uploaded_at: datetime
+    # The current version's number, and how many versions the file has
+    version: int | None
+    versions: int
+
+
+class FileVersionSchema(Schema):
+    id: UUID
+    number: int
+    source: Literal["upload", "update", "restore"]
+    created_at: datetime
+    size: int
+    current: bool
+    run_id: UUID | None
+    run_effort: str | None
+    run_a_score: float | None
+    restored_from: int | None
 
 
 class ProjectSchema(Schema):
@@ -63,6 +79,9 @@ class RunSchema(Schema):
     output_tokens: int
     cost_usd: Decimal
     error_message: str
+    input_version: int | None
+    output_version: int | None
+    version_outcome: Literal["", "saved", "saved_not_current", "unchanged", "not_saved"]
 
 
 class ErrorSchema(Schema):

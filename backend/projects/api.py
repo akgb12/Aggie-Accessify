@@ -4,7 +4,7 @@ from typing import Annotated
 from uuid import UUID
 
 from django.core.files.storage import default_storage
-from django.db.models import QuerySet
+from django.db.models import Count, QuerySet
 from django.http import FileResponse, HttpResponse
 from django.shortcuts import get_object_or_404
 from ninja import File, Router, Status, UploadedFile
@@ -12,9 +12,10 @@ from ninja.errors import HttpError
 
 from accounts.api import session_auth
 from accounts.usage import limit_message, remaining_usd
-from projects.models import Project, Run
+from projects.models import FileVersion, Project, ProjectFile, Run
 from projects.schemas import (
     ErrorSchema,
+    FileVersionSchema,
     ProjectCreateSchema,
     ProjectSchema,
     ProjectUpdateSchema,
@@ -32,9 +33,11 @@ from projects.services import (
 )
 from projects.storage import (
     delete_project_file,
+    restore_version,
     save_missing_slot,
     upload_project_files,
     validate_relative_path,
+    version_storage_path,
 )
 from projects.tasks import run_pipeline_task
 
@@ -55,9 +58,15 @@ def _owned_run(request, run_id: UUID) -> Run:
 
 
 def _project_payload(project: Project) -> dict[str, object]:
-    # Serialize one project and its files
+    # Serialize one project and its files, with the version each file is at
     files: list[dict[str, object]] = []
-    for project_file in project.files.all():
+    project_files = (
+        ProjectFile.objects.filter(project=project)
+        .select_related("current_version")
+        .annotate(version_count=Count("versions"))
+    )
+    for project_file in project_files:
+        current = project_file.current_version
         files.append(
             {
                 "id": project_file.id,
@@ -65,6 +74,8 @@ def _project_payload(project: Project) -> dict[str, object]:
                 "size": project_file.size,
                 "sha256": project_file.sha256,
                 "uploaded_at": project_file.uploaded_at,
+                "version": current.number if current is not None else None,
+                "versions": project_file.version_count,
             }
         )
     return {
@@ -97,7 +108,53 @@ def _run_payload(run: Run) -> dict[str, object]:
         "output_tokens": run.output_tokens,
         "cost_usd": run.cost_usd,
         "error_message": run.error_message,
+        **_run_versions(run),
     }
+
+
+def _run_versions(run: Run) -> dict[str, object]:
+    # Which version of its file the run started from, and the version its result became
+    started = run.input_versions.get(run.main_file)
+    input_version = (
+        FileVersion.objects.filter(id=started).values_list("number", flat=True).first()
+        if started
+        else None
+    )
+    output_version = (
+        FileVersion.objects.filter(run=run, project_file__path=run.main_file)
+        .values_list("number", flat=True)
+        .first()
+    )
+    return {
+        "input_version": input_version,
+        "output_version": output_version,
+        "version_outcome": run.version_outcome,
+    }
+
+
+def _version_payload(version: FileVersion) -> dict[str, object]:
+    run = version.run
+    return {
+        "id": version.id,
+        "number": version.number,
+        "source": version.source,
+        "created_at": version.created_at,
+        "size": version.size,
+        "current": version.project_file.current_version_id == version.id,
+        "run_id": run.id if run is not None else None,
+        "run_effort": run.effort if run is not None else None,
+        "run_a_score": run.a_score if run is not None else None,
+        "restored_from": version.restored_from.number if version.restored_from else None,
+    }
+
+
+def _owned_version(request, project_id: UUID, version_id: UUID) -> FileVersion:
+    return get_object_or_404(
+        FileVersion.objects.select_related("project_file", "run", "restored_from"),
+        id=version_id,
+        project_file__project_id=project_id,
+        project_file__project__owner=request.user,
+    )
 
 
 @router.post("/projects", response={201: ProjectSchema})
@@ -191,6 +248,40 @@ def remove_project_file(request, project_id: UUID, path: str):
     if not removed:
         raise HttpError(404, "File was not found in this project")
     return _project_payload(Project.objects.prefetch_related("files").get(id=project.id))
+
+
+@router.get(
+    "/projects/{project_id}/versions",
+    response={200: list[FileVersionSchema], 404: ErrorSchema},
+)
+def list_versions(request, project_id: UUID, path: str):
+    # Every version of one file, newest first
+    project = _owned_project(request, project_id)
+    project_file = get_object_or_404(ProjectFile, project=project, path=path)
+    versions = project_file.versions.select_related("project_file", "run", "restored_from")
+    return [_version_payload(version) for version in versions]
+
+
+@router.get("/projects/{project_id}/versions/{version_id}/download")
+def download_version(request, project_id: UUID, version_id: UUID):
+    # Download one saved version of a file under its own name, marked with its number
+    version = _owned_version(request, project_id, version_id)
+    path = PurePosixPath(version.project_file.path)
+    name = f"{path.stem} (version {version.number}){path.suffix}"
+    key = version_storage_path(project_id, version.id)
+    return FileResponse(default_storage.open(key, "rb"), as_attachment=True, filename=name)
+
+
+@router.post(
+    "/projects/{project_id}/versions/{version_id}/restore",
+    response={200: list[FileVersionSchema], 404: ErrorSchema},
+)
+def restore_file_version(request, project_id: UUID, version_id: UUID):
+    # Make an earlier version current again; it is added as the newest version
+    version = _owned_version(request, project_id, version_id)
+    restore_version(version)
+    versions = version.project_file.versions.select_related("project_file", "run", "restored_from")
+    return [_version_payload(item) for item in versions]
 
 
 @router.get(

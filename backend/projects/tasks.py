@@ -20,6 +20,7 @@ from projects.storage import (
     scratch_dir,
     upload_run_folder,
 )
+from projects.versions import save_run_outputs, snapshot_inputs
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ def run_pipeline_task(run_id: str) -> str:
         with scratch_dir(f"run-{run.id}") as scratch:
             bundle_root = scratch / "bundle"
             output_root = scratch / "output"
+            snapshot_inputs(run)
             materialize_project(run.project, bundle_root)
             meter = _SpendMeter(_model_client(pipeline_settings, fresh=run.fresh))
             try:
@@ -74,6 +76,7 @@ def run_pipeline_task(run_id: str) -> str:
             upload_run_folder(run.id, completed.folder.root, SKIPPED_RUN_FOLDERS)
             _update_completed_run(run, completed.folder.root, completed)
             charge_run(run)
+            _save_versions(run, completed.folder.root)
     except Exception as error:
         if run.status == Run.Status.RUNNING:
             # A run that fails partway has still paid for the model calls it made
@@ -85,6 +88,14 @@ def run_pipeline_task(run_id: str) -> str:
             charge_run(run)
         raise
     return str(run.id)
+
+
+def _save_versions(run: Run, root: Path) -> None:
+    # The run's results stay available even if keeping them as a version fails
+    try:
+        save_run_outputs(run, root)
+    except Exception:
+        logger.exception("Run %s output could not be kept as a file version", run.id)
 
 
 class _SpendMeter:

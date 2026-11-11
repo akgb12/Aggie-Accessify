@@ -28,6 +28,10 @@ class ProjectFile(models.Model):
     size = models.BigIntegerField()
     sha256 = models.CharField(max_length=64)
     uploaded_at = models.DateTimeField(auto_now=True)
+    # The version the project's working copy holds, which the next run starts from
+    current_version = models.ForeignKey(
+        "FileVersion", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
 
     class Meta:
         ordering = ["path"]
@@ -46,6 +50,13 @@ class Run(models.Model):
         BLOCKED = "blocked", "Blocked"
         SUCCEEDED = "succeeded", "Succeeded"
         FAILED = "failed", "Failed"
+
+    class VersionOutcome(models.TextChoices):
+        # What a finished run did with the file it was making accessible
+        SAVED = "saved", "Saved as the current version"
+        SAVED_NOT_CURRENT = "saved_not_current", "Saved, but the file changed during the run"
+        UNCHANGED = "unchanged", "Nothing needed changing"
+        NOT_SAVED = "not_saved", "Not saved because the result failed a check"
 
     class Effort(models.TextChoices):
         BASELINE = "baseline", "Baseline"
@@ -78,6 +89,40 @@ class Run(models.Model):
     refreshing = models.BooleanField(default=False)
     # Ask the model again for everything instead of reusing earlier answers
     fresh = models.BooleanField(default=False)
+    # The file versions the run started from, by path, and what became of its output
+    input_versions = models.JSONField(default=dict, blank=True)
+    version_outcome = models.CharField(max_length=32, choices=VersionOutcome, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
+
+
+class FileVersion(models.Model):
+    # One saved state of a project file. Versions are never changed or removed while the file
+    # exists: uploading, making a file accessible and restoring each add a new one.
+    class Source(models.TextChoices):
+        UPLOAD = "upload", "Uploaded"
+        UPDATE = "update", "Made accessible"
+        RESTORE = "restore", "Restored"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project_file = models.ForeignKey(ProjectFile, related_name="versions", on_delete=models.CASCADE)
+    number = models.PositiveIntegerField()
+    source = models.CharField(max_length=16, choices=Source)
+    run = models.ForeignKey(
+        Run, null=True, blank=True, on_delete=models.SET_NULL, related_name="versions"
+    )
+    restored_from = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    size = models.BigIntegerField()
+    sha256 = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project_file", "number"], name="unique_file_version_number"
+            )
+        ]

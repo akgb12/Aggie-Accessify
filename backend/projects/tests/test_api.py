@@ -15,7 +15,7 @@ from PIL import Image
 from pptx import Presentation
 from pptx.util import Inches
 
-from projects.models import Project, Run
+from projects.models import Project, ProjectFile, Run
 from projects.storage import UnsafePathError, validate_relative_path
 
 REPOSITORY_ROOT = Path(__file__).parents[3]
@@ -247,7 +247,12 @@ def test_remove_project_file(client: Client) -> None:
     response = client.delete(f"/api/projects/{project['id']}/files/drop.pdf")
     assert response.status_code == 200
     assert [item["path"] for item in response.json()["files"]] == ["keep.tex"]
-    assert _stored_keys() == [f"projects/{project['id']}/files/keep.tex"]
+    # The removed file's versions go with it; the kept file has its working copy and version
+    kept = ProjectFile.objects.get(project_id=project["id"], path="keep.tex")
+    assert _stored_keys() == [
+        f"projects/{project['id']}/files/keep.tex",
+        f"projects/{project['id']}/versions/{kept.current_version_id}",
+    ]
     assert client.delete(f"/api/projects/{project['id']}/files/drop.pdf").status_code == 404
     assert client.delete(f"/api/projects/{project['id']}/files/..%2Fx").status_code in {400, 404}
 
@@ -365,13 +370,17 @@ def _stored_keys() -> list[str]:
 
 @pytest.mark.django_db
 def test_project_files_are_stored_under_plain_keys(client: Client) -> None:
-    # Store project files at projects/<id>/files/<path> in the bucket
+    # Store project files at projects/<id>/files/<path>, and each version under versions/
     project = _create_project(client)
     client.post(
         f"/api/projects/{project['id']}/upload",
         {"files": [SimpleUploadedFile("main.tex", b"x")]},
     )
-    assert _stored_keys() == [f"projects/{project['id']}/files/main.tex"]
+    version = ProjectFile.objects.get(project_id=project["id"]).current_version_id
+    assert _stored_keys() == [
+        f"projects/{project['id']}/files/main.tex",
+        f"projects/{project['id']}/versions/{version}",
+    ]
 
 
 @pytest.mark.django_db

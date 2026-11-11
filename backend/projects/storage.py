@@ -3,6 +3,7 @@ import json
 import shutil
 from collections.abc import Iterator
 from contextlib import contextmanager
+from io import BytesIO
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, BinaryIO
 from uuid import uuid4
@@ -11,9 +12,10 @@ from django.conf import settings
 from django.core.files import File
 from django.core.files.storage import default_storage
 from django.db import transaction
+from django.db.models import Max
 
 from a11y_pipeline.bundle.unzip import safe_extract_zip
-from projects.models import Project, ProjectFile
+from projects.models import FileVersion, Project, ProjectFile, Run
 
 
 class UnsafePathError(ValueError):
@@ -66,9 +68,12 @@ def save_project_file(
     relative_path: str,
     content: BinaryIO,
 ) -> ProjectFile:
-    # Replace one project file through Django storage
+    # Replace one project file through Django storage, keeping what it held before as a version
     safe_path = validate_relative_path(relative_path)
     storage_path = project_storage_path(project.id, safe_path)
+    existing = ProjectFile.objects.filter(project=project, path=safe_path).first()
+    if existing is not None:
+        ensure_versions(existing)
     if default_storage.exists(storage_path):
         default_storage.delete(storage_path)
     saved_path = default_storage.save(storage_path, File(content))
@@ -90,7 +95,104 @@ def save_project_file(
             path=safe_path,
             defaults={"size": size, "sha256": digest.hexdigest()},
         )
+    record_upload(record)
     return record
+
+
+# Every state a project file has been in is kept as a version, so nothing a person uploads or a
+# run produces is ever lost. The working copy under files/ holds the current version, and each
+# version keeps its own copy under versions/.
+
+
+def version_storage_path(project_id: object, version_id: object) -> str:
+    return f"projects/{project_id}/versions/{version_id}"
+
+
+def ensure_versions(project_file: ProjectFile) -> FileVersion:
+    # The file's current version, saving what it holds now as its first version when it
+    # was added before versions were kept
+    if project_file.current_version_id is not None:
+        return project_file.current_version
+    working = project_storage_path(project_file.project_id, project_file.path)
+    with default_storage.open(working, "rb") as stream:
+        return new_version(project_file, stream, FileVersion.Source.UPLOAD, make_current=True)
+
+
+def record_upload(project_file: ProjectFile) -> FileVersion | None:
+    # Keep a newly uploaded working copy as a version; uploading the same bytes again adds none
+    current = project_file.current_version
+    if current is not None and current.sha256 == project_file.sha256:
+        return None
+    working = project_storage_path(project_file.project_id, project_file.path)
+    with default_storage.open(working, "rb") as stream:
+        return new_version(project_file, stream, FileVersion.Source.UPLOAD, make_current=True)
+
+
+def restore_version(version: FileVersion) -> FileVersion:
+    # Make an earlier version current again by adding a copy of it, so history is never
+    # rewritten and the version being replaced can itself be restored later
+    project_file = version.project_file
+    with default_storage.open(version_storage_path(project_file.project_id, version.id)) as stream:
+        return new_version(
+            project_file,
+            stream,
+            FileVersion.Source.RESTORE,
+            make_current=True,
+            restored_from=version,
+        )
+
+
+def delete_versions(project_file: ProjectFile) -> None:
+    # Remove the stored copies of every version of one file
+    for version_id in project_file.versions.values_list("id", flat=True):
+        key = version_storage_path(project_file.project_id, version_id)
+        if default_storage.exists(key):
+            default_storage.delete(key)
+
+
+def new_version(
+    project_file: ProjectFile,
+    stream: BinaryIO,
+    source: str,
+    *,
+    make_current: bool,
+    run: Run | None = None,
+    restored_from: FileVersion | None = None,
+) -> FileVersion:
+    content = stream.read()
+    with transaction.atomic():
+        # Numbering under a lock keeps two saves of one file from taking the same number
+        locked = ProjectFile.objects.select_for_update().get(pk=project_file.pk)
+        highest = locked.versions.aggregate(highest=Max("number"))["highest"] or 0
+        version = FileVersion(
+            project_file=locked,
+            number=highest + 1,
+            source=source,
+            run=run,
+            restored_from=restored_from,
+            size=len(content),
+            sha256=hashlib.sha256(content).hexdigest(),
+        )
+        _write(version_storage_path(locked.project_id, version.id), content)
+        version.save()
+        if make_current:
+            _write(project_storage_path(locked.project_id, locked.path), content)
+            locked.current_version = version
+            locked.size = version.size
+            locked.sha256 = version.sha256
+            locked.save(update_fields=["current_version", "size", "sha256", "uploaded_at"])
+    project_file.refresh_from_db()
+    return version
+
+
+def _write(key: str, content: bytes) -> None:
+    validate_relative_path(key)
+    if default_storage.exists(key):
+        default_storage.delete(key)
+    saved = default_storage.save(key, File(BytesIO(content)))
+    if saved != key:
+        default_storage.delete(saved)
+        raise RuntimeError("Storage changed the requested version path")
 
 
 def upload_project_files(project: Project, uploads: list[object]) -> list[ProjectFile]:
@@ -141,8 +243,9 @@ def materialize_project(
 
 
 def delete_project_files(project: Project) -> None:
-    # Delete all project inputs through Django storage
+    # Delete all project inputs, and every version of them, through Django storage
     for project_file in project.files.all():
+        delete_versions(project_file)
         storage_path = project_storage_path(project.id, project_file.path)
         if default_storage.exists(storage_path):
             default_storage.delete(storage_path)
@@ -154,6 +257,8 @@ def delete_project_file(project: Project, relative_path: str) -> bool:
     storage_path = project_storage_path(project.id, safe_path)
     if default_storage.exists(storage_path):
         default_storage.delete(storage_path)
+    for project_file in ProjectFile.objects.filter(project=project, path=safe_path):
+        delete_versions(project_file)
     deleted, _ = ProjectFile.objects.filter(project=project, path=safe_path).delete()
     return deleted > 0
 
