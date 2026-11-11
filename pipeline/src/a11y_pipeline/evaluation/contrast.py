@@ -31,6 +31,9 @@ WORD_TEXT_DISTANCE = 40
 WORD_MIN_BACKGROUND_SHARE = 0.3
 WORD_BLEND_DISTANCE = 40
 WORD_MAX_STRAY_SHARE = 0.1
+# Measured text this far from every blend of its expected colour and background is another
+# colour, so the expected colour was misread
+DRAWN_TOLERANCE = 48
 
 
 def relative_luminance(colour: tuple[int, int, int]) -> float:
@@ -124,6 +127,12 @@ def colours_around_word(image: Image.Image, expected_text: RGB) -> tuple[RGB, RG
         return None
     count = max(3, int(len(ink) * GLYPH_CORE_SHARE))
     return _median([pixel for _, pixel in ink[:count]]), background
+
+
+def drawn_as(measured: RGB, expected: RGB, background: RGB) -> bool:
+    # Whether text measured on a page is the expected colour; small text's thin strokes blend
+    # into the background, so any blend of the two counts
+    return _distance_to_segment(measured, expected, background) <= DRAWN_TOLERANCE
 
 
 def _distance_to_segment(pixel: RGB, start: RGB, end: RGB) -> float:
