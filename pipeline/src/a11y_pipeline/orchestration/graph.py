@@ -27,6 +27,7 @@ from a11y_pipeline.orchestration.nodes import (
     synthesize_node,
 )
 from a11y_pipeline.orchestration.state import RunState
+from a11y_pipeline.runs.known_descriptions import KnownDescriptions
 from a11y_pipeline.telemetry import TelemetryModelClient, TelemetryWriter
 
 
@@ -87,6 +88,7 @@ def run_pipeline(
     seed_weak_element_id: str | None = None,
     adapter_name: str = "tex-beamer",
     max_cost_usd: float | None = None,
+    known_descriptions: KnownDescriptions | None = None,
 ) -> RunState:
     # Run one pipeline with budget and telemetry controls
     resolved_settings = settings
@@ -126,6 +128,7 @@ def run_pipeline(
         model_client=wrapped_client,
         budget_controller=budget,
         seed_weak_element_id=seed_weak_element_id,
+        known_descriptions=known_descriptions or {},
     )
     result = build_graph().invoke(initial, config={"recursion_limit": 100})
     if isinstance(result, RunState):

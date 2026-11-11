@@ -3,8 +3,9 @@ import json
 from pathlib import Path, PurePosixPath
 from uuid import UUID
 
+from a11y_pipeline.runs.known_descriptions import KnownDescriptions, known_descriptions
 from projects.models import FileVersion, ProjectFile, Run
-from projects.storage import ensure_versions, new_version
+from projects.storage import ensure_versions, new_version, read_run_json
 
 # A run starts from the current version of each file, and what it produces becomes the next
 # version, so making a file accessible again builds on what the person last saw and edited.
@@ -12,6 +13,8 @@ from projects.storage import ensure_versions, new_version
 READ_BLOCK = 1024 * 1024
 OFFICE_OUTPUTS = {".pptx": "output/updated.pptx", ".docx": "output/updated.docx"}
 BEAMER_OUTPUT = "output/updated_project"
+# How many earlier runs of a file are searched for the descriptions they wrote
+KNOWN_RUNS = 10
 
 
 def snapshot_inputs(run: Run) -> None:
@@ -21,6 +24,27 @@ def snapshot_inputs(run: Run) -> None:
         for project_file in run.project.files.select_related("current_version")
     }
     run.save(update_fields=["input_versions"])
+
+
+def earlier_descriptions(run: Run) -> KnownDescriptions:
+    # The figure descriptions earlier runs of the same file wrote, so a file made accessible
+    # before is read back the way it was made; the newest run wins where two wrote the same text
+    earlier = (
+        Run.objects.filter(
+            project_id=run.project_id, main_file=run.main_file, status=Run.Status.SUCCEEDED
+        )
+        .exclude(id=run.id)
+        .order_by("-created_at")[:KNOWN_RUNS]
+    )
+    known: KnownDescriptions = {}
+    for previous in reversed(list(earlier)):
+        try:
+            known.update(
+                known_descriptions(read_run_json(previous.storage_prefix, "ir_final.json"))
+            )
+        except (OSError, ValueError):
+            continue
+    return known
 
 
 def save_run_outputs(run: Run, root: Path) -> str:

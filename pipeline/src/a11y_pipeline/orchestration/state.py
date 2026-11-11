@@ -53,3 +53,5 @@ class RunState(BaseModel):
     judgments: dict[str, dict[str, Any]] = Field(default_factory=dict)
     final_ir: DocumentIR | None = None
     blocked: bool = False
+    # Descriptions earlier runs wrote into the file, so they are read back as they were made
+    known_descriptions: dict[str, tuple[str, str | None]] = Field(default_factory=dict)

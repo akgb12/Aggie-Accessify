@@ -28,6 +28,7 @@ from a11y_pipeline.orchestration.selection import accepts_candidate, select_best
 from a11y_pipeline.orchestration.state import RunState
 from a11y_pipeline.orchestration.stopping import StopContext, decide_stop
 from a11y_pipeline.routing.router import route
+from a11y_pipeline.runs.known_descriptions import restore_known_descriptions
 
 SEED_WEAK_TEXT = "Five boxes in a row, one is blue."
 
@@ -65,6 +66,7 @@ def build_ir_node(state: RunState) -> dict[str, object]:
         raise ValueError("bundle and preflight result are required")
     adapter = get_adapter(state.adapter_name)
     document = adapter.build_ir(state.bundle, state.preflight_result)
+    restore_known_descriptions(document, state.known_descriptions)
     return {"base_ir": document}
 
 

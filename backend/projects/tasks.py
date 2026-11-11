@@ -20,7 +20,7 @@ from projects.storage import (
     scratch_dir,
     upload_run_folder,
 )
-from projects.versions import save_run_outputs, snapshot_inputs
+from projects.versions import earlier_descriptions, save_run_outputs, snapshot_inputs
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +67,7 @@ def run_pipeline_task(run_id: str) -> str:
                     seed_weak_element_id=run.seed_weak,
                     output_root=output_root,
                     max_cost_usd=float(granted) if granted is not None else None,
+                    known_descriptions=earlier_descriptions(run),
                 )
             except RunBlockedError as error:
                 upload_run_folder(run.id, error.folder.root, SKIPPED_RUN_FOLDERS)

@@ -29,6 +29,7 @@ from a11y_pipeline.render.pixeldiff import compare_pdf_pixels, visual_change_iss
 from a11y_pipeline.render.visibility import element_visible_pages
 from a11y_pipeline.report.html import write_html_report
 from a11y_pipeline.report.stats import ReportStats, build_report_stats
+from a11y_pipeline.runs.known_descriptions import KnownDescriptions
 from a11y_pipeline.runs.manifest import build_manifest, write_manifest
 from a11y_pipeline.runs.outputs import OUTPUTS_VERSION, write_office_outputs
 from a11y_pipeline.synthesis.tagger import tag_pdf
@@ -155,6 +156,7 @@ def run_to_folder(
     seed_weak_element_id: str | None = None,
     output_root: Path | None = None,
     max_cost_usd: float | None = None,
+    known_descriptions: KnownDescriptions | None = None,
 ) -> CompletedRun:
     # Run the complete deterministic pipeline and materialize outputs
     destination = output_root or settings.runs_dir
@@ -170,6 +172,7 @@ def run_to_folder(
         main_file=main_file,
         seed_weak_element_id=seed_weak_element_id,
         max_cost_usd=max_cost_usd,
+        known_descriptions=known_descriptions,
     )
     if state.blocked or state.bundle is None or state.final_ir is None:
         if state.bundle is not None:
