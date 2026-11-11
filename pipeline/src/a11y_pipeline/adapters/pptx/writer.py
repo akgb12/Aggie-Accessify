@@ -10,6 +10,7 @@ from pathlib import Path
 from lxml import etree
 from pptx import Presentation
 
+from a11y_pipeline.adapters.pptx.colors import text_runs
 from a11y_pipeline.adapters.pptx.structure import is_default_title, touches
 from a11y_pipeline.bundle.bundle import Bundle
 from a11y_pipeline.ir.models import DocumentIR, Element, Issue
@@ -32,6 +33,8 @@ ADDED_TITLE_OFFSET_EMU = 914400
 ADDED_TITLE_HEIGHT_EMU = 685800
 # Children of a shape tree that are not shapes
 TREE_PROPERTIES = {"nvGrpSpPr", "grpSpPr", "extLst"}
+# The ways a run's text can be filled, of which a recoloured run keeps none
+RUN_FILLS = {"noFill", "solidFill", "gradFill", "blipFill", "pattFill", "grpFill"}
 
 
 @dataclass
@@ -42,6 +45,8 @@ class SlideEdits:
     header_tables: set[int] = field(default_factory=set)
     move_first: int | None = None
     new_title: str | None = None
+    # New text colours, by shape id and then by run position, as hex
+    recolours: dict[int, dict[int, str]] = field(default_factory=dict)
 
     def changes_layout(self) -> bool:
         # Header rows restyle a table and moving shapes changes stacking; both are checked
@@ -107,7 +112,7 @@ def write_updated_project(
                 details={"language": language},
             )
         )
-    _write_diff(bundle, edits, title, language, diff_path)
+    _write_diff(bundle, edits, title, language, diff_path, _contrast_fixes(ir))
     return PptxWriterResult(
         project_root=output_root,
         diff_path=diff_path,
@@ -196,7 +201,76 @@ def _collect_edits(
             title = ir.elements[container.title_element_id]
             slide(part).move_first = int(title.attrs["shape_id"])
             operation("move_title_first", part, title.id, shape_id=title.attrs["shape_id"])
+        for fix in container.attrs.get("contrast_fixes", []):
+            if not part or "after" not in fix:
+                continue
+            slide(part).recolours.setdefault(int(fix["shape_id"]), {})[int(fix["run"])] = str(
+                fix["after"]
+            )
+            operation(
+                "fix_text_contrast",
+                part,
+                _element_for_shape(ir, part, int(fix["top_shape_id"])),
+                shape_id=fix["shape_id"],
+                run=fix["run"],
+                before=fix["before"],
+                after=fix["after"],
+            )
     return edits, operations, issues
+
+
+def recolour_edits(ir: DocumentIR) -> dict[str, SlideEdits]:
+    # Only the colour fixes, which is what the update may change in how a slide looks
+    edits, _, _ = _collect_edits(ir)
+    return {
+        part: SlideEdits(recolours=edit.recolours) for part, edit in edits.items() if edit.recolours
+    }
+
+
+def write_expected_deck(bundle: Bundle, ir: DocumentIR, destination: Path) -> Path | None:
+    # The original deck with only its colour fixes, which is how the update should look; None
+    # when nothing is recoloured and the original itself is the expectation
+    edits = recolour_edits(ir)
+    if not edits:
+        return None
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(bundle.root / bundle.main_file, destination)
+    _rewrite_package(destination, edits, None, None)
+    return destination
+
+
+def recolour_runs(root: etree._Element, recolours: dict[int, dict[int, str]]) -> set[int]:
+    # Give runs of text a new solid colour, finding shapes by id even inside groups; returns
+    # the shapes that were found
+    found: set[int] = set()
+    for properties in root.iter(f"{{{P_NS}}}cNvPr"):
+        shape_id = properties.get("id", "")
+        if not shape_id.isdigit() or int(shape_id) not in recolours:
+            continue
+        shape = properties.getparent().getparent()
+        runs = text_runs(shape)
+        for index, colour in recolours[int(shape_id)].items():
+            if index < len(runs):
+                set_run_colour(runs[index], colour)
+        found.add(int(shape_id))
+    return found
+
+
+def set_run_colour(run: etree._Element, colour: str) -> None:
+    # Replace the run's fill with one solid colour, in the place the schema requires: after
+    # the outline and before everything else
+    a = f"{{{A_NS}}}"
+    properties = run.find(f"{a}rPr")
+    if properties is None:
+        properties = etree.Element(f"{a}rPr")
+        run.insert(0, properties)
+    for child in list(properties):
+        if etree.QName(child).localname in RUN_FILLS:
+            properties.remove(child)
+    fill = etree.Element(f"{a}solidFill")
+    etree.SubElement(fill, f"{a}srgbClr", val=colour)
+    outline = properties.find(f"{a}ln")
+    properties.insert(0 if outline is None else list(properties).index(outline) + 1, fill)
 
 
 def decorative_now(element: Element) -> bool:
@@ -343,6 +417,7 @@ def _edit_slide(
             continue
         for table_properties in shape.iter(f"{{{A_NS}}}tblPr"):
             table_properties.set("firstRow", "1")
+    recolour_runs(tree, edits.recolours)
     first_position = list(tree).index(shapes[0]) if shapes else len(tree)
     if edits.move_first is not None and edits.move_first in by_id:
         moving = by_id[edits.move_first]
@@ -429,12 +504,24 @@ def set_core_properties(data: bytes, title: str | None, language: str | None) ->
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
+def _contrast_fixes(ir: DocumentIR) -> dict[str, list[dict]]:
+    # The colour fixes to write, by slide part
+    fixes: dict[str, list[dict]] = {}
+    for container in ir.containers:
+        part = _container_part(ir, container.element_ids)
+        written = [fix for fix in container.attrs.get("contrast_fixes", []) if "after" in fix]
+        if part and written:
+            fixes[part] = written
+    return fixes
+
+
 def _write_diff(
     bundle: Bundle,
     edits: dict[str, SlideEdits],
     title: str | None,
     language: str | None,
     diff_path: Path,
+    fixes: dict[str, list[dict]],
 ) -> None:
     # A readable list of what changed; the deck itself is a binary file
     before = Presentation(str(bundle.root / bundle.main_file))
@@ -454,6 +541,11 @@ def _write_diff(
         if edit.decorative:
             marked = ", ".join(str(names.get(shape, shape)) for shape in sorted(edit.decorative))
             lines.append(f"~ slide {number}: marked decorative: {marked}")
+        for fix in fixes.get(part, []):
+            lines.append(
+                f"~ slide {number}: text colour #{fix['before']} -> #{fix['after']} so it can be "
+                f"read ({fix['ratio_before']}:1 -> {fix['ratio_after']}:1): {fix['text']}"
+            )
         for shape in slide.shapes:
             if shape.shape_id in edit.descriptions:
                 old = (shape._element.xpath("./*[1]/p:cNvPr")[0].get("descr") or "").strip()
@@ -474,12 +566,14 @@ def _write_diff(
     diff_path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
 
 
-def verify_updated_deck(bundle: Bundle, deck: Path) -> PixelCheck:
-    # Prove from the XML that the update changed nothing a viewer sees. Every original shape
-    # must be unchanged apart from alt text, the decorative flag and the table header switch;
-    # the only new shape allowed is an added title above the slide; and shapes that overlap
-    # must keep their stacking order.
-    original = _slide_shapes(bundle.root / bundle.main_file)
+def verify_updated_deck(
+    bundle: Bundle, deck: Path, recolours: dict[str, SlideEdits] | None = None
+) -> PixelCheck:
+    # Prove from the XML that the update changed nothing a viewer sees but the colour fixes.
+    # Every original shape, given those fixes, must be unchanged apart from alt text, the
+    # decorative flag and the table header switch; the only new shape allowed is an added
+    # title above the slide; and shapes that overlap must keep their stacking order.
+    original = _slide_shapes(bundle.root / bundle.main_file, recolours or {})
     updated = _slide_shapes(deck)
     different: list[int] = []
     for index in range(max(len(original), len(updated))):
@@ -503,13 +597,16 @@ class _Shape:
     bbox: tuple[float, float, float, float] | None
 
 
-def _slide_shapes(deck: Path) -> list[list[_Shape]]:
+def _slide_shapes(deck: Path, recolours: dict[str, SlideEdits] | None = None) -> list[list[_Shape]]:
     presentation = Presentation(str(deck))
     slides: list[list[_Shape]] = []
     for slide in presentation.slides:
         shapes: list[_Shape] = []
+        fixes = (recolours or {}).get(str(slide.part.partname).lstrip("/"))
         for shape in slide.shapes:
             node = deepcopy(shape._element)
+            if fixes is not None:
+                recolour_runs(node, fixes.recolours)
             for properties in node.iter(f"{{{P_NS}}}cNvPr"):
                 properties.attrib.pop("descr", None)
                 for extension in list(properties.iter(f"{{{A_NS}}}ext")):

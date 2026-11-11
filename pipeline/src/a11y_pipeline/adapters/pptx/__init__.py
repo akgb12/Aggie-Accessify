@@ -2,32 +2,34 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from PIL import Image
-
 from a11y_pipeline.adapters.base import PreparedDocument, WrittenDocument
 from a11y_pipeline.adapters.context import figure_context
+from a11y_pipeline.adapters.pptx.colors import deck_run_colours
+from a11y_pipeline.adapters.pptx.contrast import ContrastFinding, contrast_findings
 from a11y_pipeline.adapters.pptx.parser import parse, picture_blobs, picture_png
 from a11y_pipeline.adapters.pptx.preflight import preflight
 from a11y_pipeline.adapters.pptx.render import render_deck_pdf
 from a11y_pipeline.adapters.pptx.structure import touches
-from a11y_pipeline.adapters.pptx.writer import verify_updated_deck, write_updated_project
+from a11y_pipeline.adapters.pptx.writer import (
+    recolour_edits,
+    verify_updated_deck,
+    write_expected_deck,
+    write_updated_project,
+)
 from a11y_pipeline.adapters.rendered_words import DrawnWords
 from a11y_pipeline.bundle.bundle import Bundle
 from a11y_pipeline.capabilities.base import FigureDescriptionInput
 from a11y_pipeline.evaluation.concepts import build_figure_concepts
-from a11y_pipeline.evaluation.contrast import LARGE_TEXT_POINTS, required_ratio, text_contrast
 from a11y_pipeline.ir.models import DocumentIR, Issue
 from a11y_pipeline.render.crop import crop_pdf_bbox
 from a11y_pipeline.render.ocr import ocr_words
-from a11y_pipeline.render.pages import page_size_points, render_page, render_pages
+from a11y_pipeline.render.pages import render_page
 from a11y_pipeline.render.pixeldiff import PixelCheck, compare_pdf_pixels
 
 __all__ = ["PptxAdapter"]
 
 # A whole slide shown to the model to propose a title; low resolution is enough to read it
 SLIDE_IMAGE_DPI = 60
-# Resolution for measuring text contrast; high enough that small text has solid glyph cores
-CONTRAST_DPI = 110
 # OCR that finds fewer words than this has probably missed the picture's text
 MIN_OCR_WORDS = 5
 
@@ -67,8 +69,8 @@ class PptxAdapter:
         figure_inputs: dict[str, FigureDescriptionInput] = {}
         if rendered is None:
             issues.extend(_keep_table_headers_unchanged(ir))
-        else:
-            issues.extend(_contrast_issues(ir, rendered, run_root / "work" / "contrast"))
+        findings = contrast_findings(deck, rendered, run_root / "work" / "contrast")
+        issues.extend(_plan_contrast_fixes(ir, findings))
         drawn_words = DrawnWords(rendered)
         for element in ir.elements.values():
             if element.semantic_type == "heading" and element.attrs.get("added_title"):
@@ -132,11 +134,21 @@ class PptxAdapter:
         original_pdf: Path | None,
         timeout_seconds: int,
     ) -> WrittenDocument:
-        # Write the changes into the deck and prove nothing visible changed: the XML check
-        # always, and a render comparison when LibreOffice is installed. A slide whose look
-        # changed has its layout changes (header rows, title moves) undone and is written again.
+        # Write the changes into the deck and prove nothing visible changed except the text
+        # colours fixed for contrast: the XML check always, and a render comparison when
+        # LibreOffice is installed. A slide whose look changed has its layout changes (header
+        # rows, title moves) undone and is written again.
         undone: list[Issue] = []
         undo: set[str] = set()
+        recolours = recolour_edits(ir)
+        expected_pdf = original_pdf
+        if original_pdf is not None and recolours:
+            # The update should look like the original with only those colours changed
+            expected = write_expected_deck(
+                bundle, ir, verification_root / "expected" / Path(bundle.main_file).name
+            )
+            if expected is not None:
+                expected_pdf = render_deck_pdf(expected, verification_root / "expected" / "render")
         attempts = ("all", "headers", "titles")
         for attempt, change in enumerate(attempts, start=1):
             if change != "all":
@@ -145,9 +157,9 @@ class PptxAdapter:
                 shutil.rmtree(output_root)
             result = write_updated_project(bundle, ir, output_root, diff_path)
             deck = result.project_root / bundle.main_file
-            changed = set(verify_updated_deck(bundle, deck).different_pages)
-            if original_pdf is not None:
-                changed |= _rendered_changes(deck, original_pdf, verification_root / str(attempt))
+            changed = set(verify_updated_deck(bundle, deck, recolours).different_pages)
+            if expected_pdf is not None:
+                changed |= _rendered_changes(deck, expected_pdf, verification_root / str(attempt))
             undo = {
                 part
                 for part, slide in result.slide_parts.items()
@@ -155,7 +167,7 @@ class PptxAdapter:
             }
             if not undo:
                 break
-        issues = list(result.issues) + undone
+        issues = list(result.issues) + undone + _contrast_left(deck, ir)
         for slide in sorted(changed):
             issues.append(
                 Issue(
@@ -194,6 +206,40 @@ def _contains_picture(ir: DocumentIR, element: Any) -> bool:
         if other.render.pages == element.render.pages and touches(other.render.bbox, bbox):
             return True
     return False
+
+
+def _contrast_left(deck: Path, ir: DocumentIR) -> list[Issue]:
+    # Read the written deck's colours again: a run the update meant to fix that still fails
+    # was not written as planned
+    planned = {
+        (str(fix["part"]), int(fix["shape_id"]), int(fix["run"]))
+        for container in ir.containers
+        for fix in container.attrs.get("contrast_fixes", [])
+        if "after" in fix
+    }
+    if not planned:
+        return []
+    issues: list[Issue] = []
+    for run in deck_run_colours(deck):
+        if (run.part, run.shape_id, run.run) not in planned or not run.fails:
+            continue
+        issues.append(
+            Issue(
+                element_id=_element_by_shape(ir, run.part, run.top_shape_id),
+                code="low_contrast",
+                severity="warning",
+                message=(
+                    f'"{_excerpt(run.text)}" is still hard to read after its colour was changed. '
+                    "Change the text or background colour."
+                ),
+                details={
+                    "ratio": round(run.ratio or 0, 2),
+                    "required": run.required,
+                    "slide": run.slide,
+                },
+            )
+        )
+    return issues
 
 
 def _rendered_changes(deck: Path, original_pdf: Path, work: Path) -> set[int]:
@@ -252,54 +298,77 @@ def _part_of(ir: DocumentIR, element_ids: list[str]) -> str | None:
     return None
 
 
-def _contrast_issues(ir: DocumentIR, rendered: Path, work: Path) -> list[Issue]:
-    # Report text whose colour is too close to its background, measured on the rendered slide.
-    # Report only: changing a professor's colours is their call.
-    try:
-        pages = render_pages(rendered, work, dpi=CONTRAST_DPI)
-        sizes = page_size_points(rendered)
-    except (OSError, RuntimeError, ValueError):
-        return []
+def _plan_contrast_fixes(ir: DocumentIR, findings: list[ContrastFinding]) -> list[Issue]:
+    # Record on each slide the text colours the update changes, so faint text becomes readable
+    # while keeping its hue, and report text that no colour of its hue can fix
     issues: list[Issue] = []
-    for element in ir.elements.values():
-        bbox = element.render.bbox
-        if element.semantic_type not in {"heading", "paragraph"} or bbox is None:
+    parts = {
+        str(element.attrs.get("part")): container
+        for container in ir.containers
+        for element_id in container.element_ids
+        if (element := ir.elements[element_id]).attrs.get("part")
+    }
+    fixed: dict[tuple[str, int], list[ContrastFinding]] = {}
+    for finding in findings:
+        run = finding.run
+        container = parts.get(run.part)
+        element_id = _element_by_shape(ir, run.part, run.top_shape_id)
+        if container is not None:
+            container.attrs.setdefault("contrast_fixes", []).append(finding.record())
+        if finding.fixed is not None and container is not None:
+            fixed.setdefault((run.part, run.top_shape_id), []).append(finding)
             continue
-        if not element.content.get("text") or not element.render.pages:
-            continue
-        page = element.render.pages[0]
-        if page > len(pages):
-            continue
-        width, height = sizes[page - 1]
-        with Image.open(pages[page - 1]) as image:
-            scale = image.width / width
-            box = (
-                max(0, int(bbox[0] * scale)),
-                max(0, int((height - bbox[3]) * scale)),
-                min(image.width, int(bbox[2] * scale)),
-                min(image.height, int((height - bbox[1]) * scale)),
+        reason = (
+            "It is a link, whose colour PowerPoint takes from the theme."
+            if run.hyperlink
+            else "No shade of its colour is readable on this background."
+        )
+        issues.append(
+            Issue(
+                element_id=element_id,
+                code="low_contrast",
+                severity="warning",
+                message=(
+                    f'"{_excerpt(run.text)}" is hard to read on its background '
+                    f"(about {finding.ratio:.1f}:1; at least {run.required:g}:1 is needed). "
+                    f"{reason} Change the text or background colour."
+                ),
+                details={
+                    "ratio": round(finding.ratio, 2),
+                    "required": run.required,
+                    "slide": run.slide,
+                },
             )
-            if box[2] - box[0] < 4 or box[3] - box[1] < 4:
-                continue
-            ratio = text_contrast(image.crop(box))
-        points = element.attrs.get("font_points")
-        if points is None and element.semantic_type == "heading":
-            points = LARGE_TEXT_POINTS
-        needed = required_ratio(points)
-        if ratio is not None and ratio < needed:
-            issues.append(
-                Issue(
-                    element_id=element.id,
-                    code="low_contrast",
-                    severity="warning",
-                    message=(
-                        f"This text's colour is close to its background (about {ratio:.1f}:1; "
-                        f"at least {needed:g}:1 is needed). Use a darker or lighter colour."
-                    ),
-                    details={"ratio": round(ratio, 2), "required": needed, "slide": page},
-                )
+        )
+    for (part, shape_id), group in fixed.items():
+        first = group[0]
+        issues.append(
+            Issue(
+                element_id=_element_by_shape(ir, part, shape_id),
+                code="contrast_fixed",
+                severity="info",
+                message=(
+                    f'Text that was hard to read on its background, such as "'
+                    f'{_excerpt(first.run.text)}", now uses a shade of its colour that can be '
+                    f"read: #{first.record()['before']} became #{first.record()['after']} "
+                    f"({first.ratio:.1f}:1 became {first.record()['ratio_after']}:1)."
+                ),
+                details={"slide": first.run.slide, "runs": len(group)},
             )
+        )
     return issues
+
+
+def _element_by_shape(ir: DocumentIR, part: str, shape_id: int) -> str | None:
+    for element in ir.elements.values():
+        if element.attrs.get("part") == part and element.attrs.get("shape_id") == shape_id:
+            return element.id
+    return None
+
+
+def _excerpt(text: str, limit: int = 40) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
 def _keep_table_headers_unchanged(ir: DocumentIR) -> list[Issue]:
