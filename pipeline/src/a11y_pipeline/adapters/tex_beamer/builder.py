@@ -3,6 +3,7 @@ import re
 from pathlib import PurePosixPath
 from typing import Any
 
+from a11y_pipeline.adapters.pptx.parser import is_junk_alt
 from a11y_pipeline.adapters.tex_beamer.preflight import PreflightResult
 from a11y_pipeline.adapters.tex_beamer.records import (
     NativeDocument,
@@ -179,7 +180,7 @@ class _Builder:
             fingerprint=fingerprint_source(record.source.raw),
             source=source,
             classification=Classification(evidence=[record.source.native_type]),
-            accessibility=Accessibility(role=role, status=status),
+            accessibility=_accessibility(role, status, attrs),
             fidelity=Fidelity(signature=self._signature(semantic_type, content)),
         )
         self.elements[element_id] = element
@@ -262,13 +263,13 @@ class _Builder:
             labels = attrs.pop("labels", [])
             attrs["tikz_labels"] = labels
             content["source"] = {"raw": record.source.raw}
-            return "diagram", "needs_description"
+            return "diagram", _described_or("needs_description", attrs)
         reference = str(attrs.pop("path", ""))
         asset = self._image_asset(reference)
         content["asset_id"] = asset.id
         asset.used_by.append(element_id)
         if asset.status == "found":
-            return "image", "needs_description"
+            return "image", _described_or("needs_description", attrs)
         return "image", "missing_asset"
 
     def _image_asset(self, reference: str) -> Asset:
@@ -492,3 +493,24 @@ def _asset_matches(reference: str, resolved_path: str) -> bool:
     if reference_path.parent == PurePosixPath("."):
         return resolved_without_suffix.name == reference_without_suffix.name
     return False
+
+
+def _described_or(status: str, attrs: dict[str, Any]) -> str:
+    # A figure that already has a real description, written by its author or by an earlier
+    # update, keeps it, as in PowerPoint and Word
+    existing = str(attrs.get("existing_alt", ""))
+    return "done" if existing.strip() and not is_junk_alt(existing) else status
+
+
+def _accessibility(role: str | None, status: str, attrs: dict[str, Any]) -> Accessibility:
+    existing = str(attrs.get("existing_alt", "")).strip()
+    if status != "done" or not existing:
+        return Accessibility(role=role, status=status)
+    alt, _, extended = existing.partition("\n\n")
+    return Accessibility(
+        role=role,
+        status="done",
+        alt_text=alt.strip(),
+        extended_description=extended.strip() or None,
+        locked=True,
+    )

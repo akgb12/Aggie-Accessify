@@ -116,6 +116,10 @@ def _latex_context():
     return context
 
 
+# The comment an update writes above a TikZ picture to hold its description
+ALT_COMMENT = "% a11y-alt:"
+
+
 class _Parser:
     def __init__(self, text: str, source_file: str):
         # Prepare one tolerant parse with shared source indexing
@@ -860,6 +864,9 @@ class _Parser:
         option = self._optional_argument(node)
         if option is not None:
             attrs["options"] = self._inside_group(option).strip()
+            existing = self._alt_option(attrs["options"])
+            if existing:
+                attrs["existing_alt"] = existing
         return NativeRecord(
             kind="figure",
             source=self._source(node.pos, node.pos + node.len, "includegraphics"),
@@ -870,11 +877,51 @@ class _Parser:
         # Keep exact TikZ source and collect labels from node groups
         labels: list[str] = []
         self._tikz_labels(node.nodelist, labels)
+        attrs: dict[str, Any] = {"subtype": "diagram", "labels": labels}
+        existing = self._alt_comments_before(node.pos)
+        if existing:
+            attrs["existing_alt"] = existing
         return NativeRecord(
             kind="figure",
             source=self._source(node.pos, node.pos + node.len, "tikzpicture"),
-            attrs={"subtype": "diagram", "labels": labels},
+            attrs=attrs,
         )
+
+    def _alt_option(self, options: str) -> str:
+        # The description already in an includegraphics alt option, as plain text
+        for option in self._split_top_level(options, ","):
+            key, separator, value = option.partition("=")
+            if separator and key.strip() == "alt":
+                value = self._strip_outer_braces(value.strip())
+                return re.sub(r"\\([{}%#])", r"\1", value).strip()
+        return ""
+
+    def _alt_comments_before(self, position: int) -> str:
+        # The description in the alt comment lines directly above a TikZ picture, as written
+        # by an earlier update; a bare comment line separates its paragraphs
+        line_start = self.text.rfind("\n", 0, position) + 1
+        if self.text[line_start:position].strip():
+            return ""
+        lines: list[str] = []
+        end = line_start
+        while end > 0:
+            start = self.text.rfind("\n", 0, end - 1) + 1
+            line = self.text[start : end - 1].strip()
+            if not line.startswith(ALT_COMMENT):
+                break
+            lines.append(line[len(ALT_COMMENT) :].strip())
+            end = start
+        paragraphs: list[str] = []
+        current: list[str] = []
+        for line in reversed(lines):
+            if line:
+                current.append(line)
+            elif current:
+                paragraphs.append(" ".join(current))
+                current = []
+        if current:
+            paragraphs.append(" ".join(current))
+        return "\n\n".join(paragraphs)
 
     def _tikz_labels(self, nodes: list[Any], labels: list[str]) -> None:
         # Walk TikZ siblings and collect every static node label

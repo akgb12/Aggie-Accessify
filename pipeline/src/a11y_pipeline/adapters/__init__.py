@@ -279,7 +279,10 @@ def _figure_inputs(
     for element in ir.elements.values():
         if element.semantic_type != "figure":
             continue
-        if element.accessibility.status != "needs_description":
+        # A figure that already has a description is measured against the same concepts as
+        # one being described, so running a document again scores it the same
+        described = element.accessibility.status == "done"
+        if element.accessibility.status != "needs_description" and not described:
             continue
         if not element.render.pages or element.render.bbox is None:
             continue
@@ -297,6 +300,8 @@ def _figure_inputs(
         element.fidelity.required_concepts = list(concepts.required)
         element.fidelity.excluded_concepts = list(concepts.excluded)
         ir.issues.extend(concepts.issues)
+        if described:
+            continue
         crop_path = crop_root / f"{element.id.replace('/', '-')}.png"
         crop_pdf_bbox(
             pdf_path,

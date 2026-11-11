@@ -137,6 +137,9 @@ def _add_figure_edits(
     for element in ir.elements.values():
         if element.semantic_type != "figure":
             continue
+        if element.accessibility.locked:
+            # Its description is already in the source
+            continue
         description = _figure_description(element)
         if description is None:
             issues.append(
