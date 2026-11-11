@@ -1,4 +1,4 @@
-import { FileText, MousePointerClick, Presentation } from 'lucide-react'
+import { FileText, History, MousePointerClick, Presentation } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
@@ -8,6 +8,7 @@ import { isFinished } from '../status'
 import type { Project, Run } from '../types'
 import TranslateForm from './TranslateForm'
 import { Alert, EmptyState, RunStatusBadge, Spinner } from './ui'
+import VersionHistory from './VersionHistory'
 
 function Elapsed({ since }: { since: string }) {
   const [now, setNow] = useState(() => Date.now())
@@ -33,10 +34,12 @@ interface Props {
   run: Run | null
   loadError: string | null
   onStarted: (run: Run) => void
+  onVersionsChanged: () => void
 }
 
 // Everything the editor can show other than a finished translation
-export default function EditorMain({ project, targets, file, run, loadError, onStarted }: Props) {
+export default function EditorMain({ project, targets, file, run, loadError, onStarted, onVersionsChanged }: Props) {
+  const [history, setHistory] = useState(false)
   const noTargets = whyNoTargets(project.files, targets)
   if (noTargets === 'no_tex') {
     return (
@@ -93,6 +96,7 @@ export default function EditorMain({ project, targets, file, run, loadError, onS
     )
   }
 
+  const current = project.files.find((item) => item.path === file)
   let notice: ReactNode = null
   if (loadError) {
     notice = (
@@ -133,7 +137,23 @@ export default function EditorMain({ project, targets, file, run, loadError, onS
           </p>
         </div>
         {notice}
-        <TranslateForm projectId={project.id} file={file} onStarted={onStarted} />
+        {current?.version && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-slate-50 px-3 py-2 text-sm">
+            <span className="text-slate-700">
+              Version {current.version}
+              {current.versions > 1 ? ` of ${current.versions}` : ''}
+            </span>
+            <button
+              type="button"
+              onClick={() => setHistory(true)}
+              className="inline-flex items-center gap-1.5 font-semibold text-brand-800 underline underline-offset-4"
+            >
+              <History aria-hidden className="h-4 w-4" />
+              Version history
+            </button>
+          </div>
+        )}
+        <TranslateForm projectId={project.id} file={file} version={current?.version ?? null} onStarted={onStarted} />
         {run && run.status === 'succeeded' && (
           <Link
             to={editorPath(project.id, file, run.id)}
@@ -143,6 +163,14 @@ export default function EditorMain({ project, targets, file, run, loadError, onS
           </Link>
         )}
       </div>
+      {history && (
+        <VersionHistory
+          projectId={project.id}
+          path={file}
+          onClose={() => setHistory(false)}
+          onChanged={onVersionsChanged}
+        />
+      )}
     </Centered>
   )
 }

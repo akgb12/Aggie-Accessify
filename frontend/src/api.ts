@@ -1,5 +1,6 @@
 import { readCookie } from './account'
 import type {
+  FileVersion,
   Preferences,
   Preflight,
   Project,
@@ -67,6 +68,10 @@ function json(body: unknown, method = 'POST'): RequestInit {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   }
+}
+
+export function versionDownloadUrl(projectId: string, versionId: string): string {
+  return `${BASE_URL}/projects/${projectId}/versions/${versionId}/download`
 }
 
 export function artifactUrl(runId: string, relativePath: string): string {
@@ -140,5 +145,10 @@ export const api = {
   createRunsForAll: (id: string, payload: Pick<RunCreate, 'effort' | 'fresh'>) =>
     request<Run[]>(`/projects/${id}/runs/all`, json(payload)),
   getRun: (id: string) => request<Run>(`/runs/${id}`),
+  listVersions: (id: string, path: string) =>
+    request<FileVersion[]>(`/projects/${id}/versions?path=${encodeURIComponent(path)}`),
+  // Make an earlier version current again; it comes back as the newest version
+  restoreVersion: (id: string, versionId: string) =>
+    request<FileVersion[]>(`/projects/${id}/versions/${versionId}/restore`, { method: 'POST' }),
   getReview: (id: string) => request<Review>(`/runs/${id}/review`),
 }

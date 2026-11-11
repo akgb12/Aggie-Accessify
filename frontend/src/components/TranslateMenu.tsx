@@ -12,11 +12,12 @@ interface Props {
   projectId: string
   file: string
   runs: Run[]
+  version: number | null
   onStarted: (run: Run) => void
 }
 
 // Run the deck again from the review screen, or open an earlier run of it
-export default function TranslateMenu({ projectId, file, runs, onStarted }: Props) {
+export default function TranslateMenu({ projectId, file, runs, version, onStarted }: Props) {
   const [open, setOpen] = useState(false)
   const earlier = runs
     .filter((run) => run.main_file === file)
@@ -36,6 +37,7 @@ export default function TranslateMenu({ projectId, file, runs, onStarted }: Prop
         <TranslateForm
           projectId={projectId}
           file={file}
+          version={version}
           compact
           onStarted={(run) => {
             setOpen(false)

@@ -12,9 +12,11 @@ interface Props {
   file: string
   onStarted: (run: Run) => void
   compact?: boolean
+  // The file's current version, which the run starts from
+  version?: number | null
 }
 
-export default function TranslateForm({ projectId, file, onStarted, compact = false }: Props) {
+export default function TranslateForm({ projectId, file, onStarted, compact = false, version = null }: Props) {
   const { preferences } = useUser()
   const [effort, setEffort] = useState<DefaultEffort>(preferences.default_effort)
   const [seedWeak, setSeedWeak] = useState('')
@@ -77,6 +79,11 @@ export default function TranslateForm({ projectId, file, onStarted, compact = fa
         </span>
       </label>
 
+      {version !== null && (
+        <p className="text-sm text-slate-600">
+          Starts from version {version}, the current version of this file, so changes you uploaded are kept.
+        </p>
+      )}
       {error && <Alert tone="danger">{error}</Alert>}
       <Button
         variant="primary"

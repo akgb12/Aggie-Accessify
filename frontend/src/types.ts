@@ -47,7 +47,26 @@ export interface ProjectFile {
   size: number
   sha256: string
   uploaded_at: string
+  // The current version's number, and how many versions the file has
+  version: number | null
+  versions: number
 }
+
+export interface FileVersion {
+  id: string
+  number: number
+  source: 'upload' | 'update' | 'restore'
+  created_at: string
+  size: number
+  current: boolean
+  run_id: string | null
+  run_effort: Effort | null
+  run_a_score: number | null
+  restored_from: number | null
+}
+
+// What a finished run did with the file it made accessible; empty for runs from before versions
+export type VersionOutcome = '' | 'saved' | 'saved_not_current' | 'unchanged' | 'not_saved'
 
 export interface Project {
   id: string
@@ -100,6 +119,9 @@ export interface Run {
   output_tokens: number
   cost_usd: string
   error_message: string
+  input_version: number | null
+  output_version: number | null
+  version_outcome: VersionOutcome
 }
 
 export interface RunCreate {

@@ -108,6 +108,15 @@ export default function ReviewToolbar({
           <dd className="tabular-nums">
             {run.input_tokens.toLocaleString()} in · {run.output_tokens.toLocaleString()} out ({run.model_provider})
           </dd>
+          {run.input_version !== null && (
+            <>
+              <dt className="text-slate-600">File version</dt>
+              <dd>
+                Started from version {run.input_version}
+                {run.output_version !== null ? `, saved as version ${run.output_version}` : ', not saved as a new one'}
+              </dd>
+            </>
+          )}
           <dt className="text-slate-600">Stopped because</dt>
           <dd>{run.stop_reason.replace(/_/g, ' ') || 'not recorded'}</dd>
           {renderEngine && (

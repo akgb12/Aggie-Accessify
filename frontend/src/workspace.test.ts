@@ -21,6 +21,9 @@ const run = (id: string, file: string, created: string): Run => ({
   output_tokens: 0,
   cost_usd: '0',
   error_message: '',
+  input_version: null,
+  output_version: null,
+  version_outcome: '',
 })
 
 describe('latestRunsByFile', () => {

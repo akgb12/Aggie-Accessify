@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { buildTree, foldersAbove } from './fileTree'
 import type { ProjectFile } from './types'
 
-const file = (path: string): ProjectFile => ({ id: 1, path, size: 1, sha256: '', uploaded_at: '' })
+const file = (path: string): ProjectFile => ({
+  id: 1,
+  path,
+  size: 1,
+  sha256: '',
+  uploaded_at: '',
+  version: 1,
+  versions: 1,
+})
 
 describe('buildTree', () => {
   it('nests folders and lists folders before files in natural order', () => {

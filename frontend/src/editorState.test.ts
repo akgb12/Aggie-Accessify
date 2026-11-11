@@ -21,9 +21,20 @@ const run = (file: string, created: string): Run => ({
   output_tokens: 0,
   cost_usd: '0',
   error_message: '',
+  input_version: null,
+  output_version: null,
+  version_outcome: '',
 })
 
-const file = (path: string): ProjectFile => ({ id: 1, path, size: 1, sha256: '', uploaded_at: '' })
+const file = (path: string): ProjectFile => ({
+  id: 1,
+  path,
+  size: 1,
+  sha256: '',
+  uploaded_at: '',
+  version: 1,
+  versions: 1,
+})
 
 describe('pickFile', () => {
   const targets = ['a.tex', 'b.tex', 'c.tex']

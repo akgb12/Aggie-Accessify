@@ -95,6 +95,7 @@ export default function EditorPage() {
           run={followed.run}
           loadError={followed.error}
           onStarted={started}
+          onVersionsChanged={reload}
         />
       }
       right={null}

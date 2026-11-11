@@ -36,7 +36,12 @@ interface Props {
   onRemove: (path: string) => void
 }
 
-function statusText(run: Run | undefined): string {
+function statusText(run: Run | undefined, file: ProjectFile | undefined): string {
+  const status = runStatusText(run)
+  return file?.version && file.versions > 1 ? `${status} · version ${file.version}` : status
+}
+
+function runStatusText(run: Run | undefined): string {
   if (!run) return 'Not made accessible yet'
   if (run.status === 'succeeded') return `Made accessible ${relativeTime(run.created_at)}`
   if (run.status === 'queued' || run.status === 'running') return 'Working on it'
@@ -86,7 +91,7 @@ export default function FileTree({ files, targets, latestByFile, selectedFile, o
         <span className="min-w-0 flex-1">
           <span className={cx('block truncate', !isTarget && 'text-slate-400')}>{node.name}</span>
           {isTarget && (
-            <span className="block truncate text-xs text-slate-600">{statusText(latestByFile.get(node.path))}</span>
+            <span className="block truncate text-xs text-slate-600">{statusText(latestByFile.get(node.path), node.file)}</span>
           )}
         </span>
       </>

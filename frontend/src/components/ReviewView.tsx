@@ -1,3 +1,4 @@
+import { History, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { containerTitle } from '../format'
@@ -14,6 +15,9 @@ import ReviewSidebar from './ReviewSidebar'
 import SlideOutline from './SlideOutline'
 import ReviewToolbar from './ReviewToolbar'
 import TranslateMenu from './TranslateMenu'
+import { Alert } from './ui'
+import VersionHistory from './VersionHistory'
+import { versionNotice } from '../versions'
 
 const DEFAULT_HIDDEN: ElementStatus = 'done'
 
@@ -34,6 +38,10 @@ export default function ReviewView({ run, review, projectName, workspace, files,
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [leftOpen, setLeftOpen] = usePersistentFlag('review.left', true)
   const [rightOpen, setRightOpen] = usePersistentFlag('review.right', true)
+  const [noticeOpen, setNoticeOpen] = useState(true)
+  const [history, setHistory] = useState(false)
+  const notice = versionNotice(run)
+  const fileVersion = workspace.project?.files.find((item) => item.path === run.main_file)?.version ?? null
   const [visible, setVisible] = useState<Set<ElementStatus>>(() => {
     const all = new Set<ElementStatus>()
     for (const element of review.elements) all.add(statusGroup(element.status))
@@ -136,6 +144,7 @@ export default function ReviewView({ run, review, projectName, workspace, files,
               projectId={run.project_id}
               file={run.main_file}
               runs={workspace.runs}
+              version={fileVersion}
               onStarted={onStarted}
             />
           }
@@ -174,26 +183,67 @@ export default function ReviewView({ run, review, projectName, workspace, files,
         ) : null
       }
       center={
-        review.pages.length > 0 ? (
-          <PageViewer
-            pages={review.pages}
-            pageNumber={pageNumber}
-            elements={pageElements}
-            selectedId={selectedId}
-            onSelect={select}
-            onPage={setPageNumber}
-          />
-        ) : (
-          <SlideOutline
-            slideCount={review.containers.length}
-            slideNumber={pageNumber}
-            title={slideTitles.get(review.containers[pageNumber - 1]?.id ?? '') ?? null}
-            elements={slideElements}
-            selectedId={selectedId}
-            onSelect={select}
-            onSlide={setPageNumber}
-          />
-        )
+        <div className="flex h-full min-h-0 flex-col">
+          {notice && noticeOpen && (
+            <div className="shrink-0 px-4 pt-3">
+              <Alert
+                tone={notice.tone}
+                action={
+                  <span className="flex shrink-0 items-start gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setHistory(true)}
+                      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1 font-semibold underline underline-offset-4 hover:bg-white/60"
+                    >
+                      <History aria-hidden className="h-4 w-4" />
+                      Version history
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNoticeOpen(false)}
+                      aria-label="Dismiss"
+                      className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-white/60"
+                    >
+                      <X aria-hidden className="h-4 w-4" />
+                    </button>
+                  </span>
+                }
+              >
+                {notice.text}
+              </Alert>
+            </div>
+          )}
+          <div className="min-h-0 flex-1">
+            {review.pages.length > 0 ? (
+              <PageViewer
+                pages={review.pages}
+                pageNumber={pageNumber}
+                elements={pageElements}
+                selectedId={selectedId}
+                onSelect={select}
+                onPage={setPageNumber}
+              />
+            ) : (
+              <SlideOutline
+                slideCount={review.containers.length}
+                slideNumber={pageNumber}
+                title={slideTitles.get(review.containers[pageNumber - 1]?.id ?? '') ?? null}
+                elements={slideElements}
+                selectedId={selectedId}
+                onSelect={select}
+                onSlide={setPageNumber}
+              />
+            )}
+          </div>
+          {history && (
+            <VersionHistory
+              projectId={run.project_id}
+              path={run.main_file}
+              onClose={() => setHistory(false)}
+              onChanged={workspace.reload}
+            />
+          )}
+        </div>
       }
       right={
         rightOpen ? (
