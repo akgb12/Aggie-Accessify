@@ -425,7 +425,11 @@ def decide_node(state: RunState) -> dict[str, object]:
             current_round=state.current_round,
             round_cap=round_cap(state.effort),
             budget_spent=state.budget_spent,
-            dollar_cap=dollar_cap(state.effort, state.config),
+            dollar_cap=(
+                state.budget_controller.cap_usd
+                if state.budget_controller is not None
+                else dollar_cap(state.effort, state.config)
+            ),
             accepted_improvement=state.last_candidate_accepted,
             repair_counts=state.repair_counts,
             repair_limit=ELEMENT_REPAIR_LIMIT,

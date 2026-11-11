@@ -86,6 +86,7 @@ def run_pipeline(
     main_file: str | None = None,
     seed_weak_element_id: str | None = None,
     adapter_name: str = "tex-beamer",
+    max_cost_usd: float | None = None,
 ) -> RunState:
     # Run one pipeline with budget and telemetry controls
     resolved_settings = settings
@@ -95,7 +96,12 @@ def run_pipeline(
     resolved_telemetry = telemetry_path
     if resolved_telemetry is None:
         resolved_telemetry = resolved_settings.runs_dir / resolved_run_id / "telemetry.jsonl"
-    budget = Budget(cap_usd=dollar_cap(effort, resolved_settings))
+    # The effort sets the run's cap; a caller with less left to spend, such as an account
+    # near its usage limit, lowers it
+    cap = dollar_cap(effort, resolved_settings)
+    if max_cost_usd is not None:
+        cap = max(0.0, min(cap, max_cost_usd))
+    budget = Budget(cap_usd=cap)
     input_price = resolved_settings.model_input_usd_per_mtok or 0.0
     output_price = resolved_settings.model_output_usd_per_mtok or 0.0
     pricing = ModelPricing(

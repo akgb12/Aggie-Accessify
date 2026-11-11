@@ -154,6 +154,7 @@ def run_to_folder(
     main_file: str | None = None,
     seed_weak_element_id: str | None = None,
     output_root: Path | None = None,
+    max_cost_usd: float | None = None,
 ) -> CompletedRun:
     # Run the complete deterministic pipeline and materialize outputs
     destination = output_root or settings.runs_dir
@@ -168,6 +169,7 @@ def run_to_folder(
         input_path=input_path,
         main_file=main_file,
         seed_weak_element_id=seed_weak_element_id,
+        max_cost_usd=max_cost_usd,
     )
     if state.blocked or state.bundle is None or state.final_ir is None:
         if state.bundle is not None:

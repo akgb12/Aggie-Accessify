@@ -269,6 +269,26 @@ def test_budget_cap_stops_before_real_fake_call(tmp_path: Path) -> None:
     assert events[0]["element_id"] == CV_ID
 
 
+def test_a_caller_cap_below_the_effort_cap_stops_the_run(tmp_path: Path) -> None:
+    # An account with nothing left to spend gets no model calls, whatever the effort allows
+    fake = FakeModelClient(scripts={CV_ID: [WEAK]})
+    settings = _settings(model_input_usd_per_mtok=1000.0, model_output_usd_per_mtok=1000.0)
+
+    state = run_pipeline(
+        model_client=fake,
+        effort="high",
+        settings=settings,
+        run_id="account",
+        telemetry_path=tmp_path / "telemetry.jsonl",
+        base_ir=_document(),
+        figure_inputs=_inputs(),
+        max_cost_usd=0.0,
+    )
+
+    assert state.stop_reason == "budget_cap"
+    assert fake.requests == []
+
+
 def test_no_accepted_improvement_stops_after_regression(tmp_path: Path) -> None:
     # Stop when a repair candidate regresses
     partial = {"alt_text": "Five folds are shown."}
