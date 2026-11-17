@@ -142,6 +142,11 @@ const WORDING: Record<string, IssueWording> = {
     title: 'Title is not read first',
     explanation: 'Moving it automatically would change the slide, so reorder it in PowerPoint.',
   },
+  reading_order_unclear: {
+    title: 'Check the reading order',
+    explanation:
+      'This slide can be read in more than one order, so it was left as it is. Check it in PowerPoint under Arrange > Reading Order.',
+  },
   layout_change_undone: {
     title: 'A fix was undone to keep the look unchanged',
     explanation: 'The change altered how a slide or page looks, so it was reversed. You can make it by hand.',
