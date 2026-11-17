@@ -44,13 +44,15 @@ class SlideEdits:
     decorative: set[int] = field(default_factory=set)
     header_tables: set[int] = field(default_factory=set)
     move_first: int | None = None
+    # Every top-level shape by id in its new drawing order, which is also its reading order
+    order: list[int] = field(default_factory=list)
     new_title: str | None = None
     # New text colours, by shape id and then by run position, as hex
     recolours: dict[int, dict[int, str]] = field(default_factory=dict)
 
     def changes_layout(self) -> bool:
         # Header rows restyle a table and moving shapes changes stacking; both are checked
-        return bool(self.header_tables) or self.move_first is not None
+        return bool(self.header_tables) or self.move_first is not None or bool(self.order)
 
 
 @dataclass(frozen=True)
@@ -201,6 +203,9 @@ def _collect_edits(
             title = ir.elements[container.title_element_id]
             slide(part).move_first = int(title.attrs["shape_id"])
             operation("move_title_first", part, title.id, shape_id=title.attrs["shape_id"])
+        if container.attrs.get("shape_order") and part:
+            slide(part).order = [int(shape_id) for shape_id in container.attrs["shape_order"]]
+            operation("set_reading_order", part, None, shape_ids=slide(part).order)
         for fix in container.attrs.get("contrast_fixes", []):
             if not part or "after" not in fix:
                 continue
@@ -419,7 +424,13 @@ def _edit_slide(
             table_properties.set("firstRow", "1")
     recolour_runs(tree, edits.recolours)
     first_position = list(tree).index(shapes[0]) if shapes else len(tree)
-    if edits.move_first is not None and edits.move_first in by_id:
+    if edits.order and len(by_id) == len(shapes) and sorted(edits.order) == sorted(by_id):
+        # Shapes are listed in the slide in reading order; anything else in the tree stays put
+        for shape in shapes:
+            tree.remove(shape)
+        for offset, shape_id in enumerate(edits.order):
+            tree.insert(first_position + offset, by_id[shape_id])
+    elif edits.move_first is not None and edits.move_first in by_id:
         moving = by_id[edits.move_first]
         tree.remove(moving)
         tree.insert(first_position, moving)
@@ -534,7 +545,9 @@ def _write_diff(
         names = {shape.shape_id: shape.name for shape in slide.shapes}
         if edit.new_title:
             lines.append(f"+ slide {number}: added title, kept above the slide: {edit.new_title}")
-        if edit.move_first is not None:
+        if edit.order:
+            lines.append(f"~ slide {number}: reading order now follows the layout")
+        elif edit.move_first is not None:
             lines.append(f"~ slide {number}: title moved to the start of the reading order")
         for shape_id in sorted(edit.header_tables):
             lines.append(f"~ slide {number}: {names.get(shape_id, shape_id)} first row is a header")

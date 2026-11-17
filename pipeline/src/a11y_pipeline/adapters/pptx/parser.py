@@ -1,5 +1,6 @@
 import hashlib
 import io
+import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,6 +13,7 @@ from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
 from pptx.shapes.base import BaseShape
 
 from a11y_pipeline.adapters.pptx.structure import (
+    TOUCH_MARGIN_POINTS,
     Box,
     BoxKind,
     analyze_layout,
@@ -19,6 +21,12 @@ from a11y_pipeline.adapters.pptx.structure import (
     is_default_title,
     table_has_header_row,
     title_can_move_first,
+)
+from a11y_pipeline.analysis.reading_order import (
+    Drawn,
+    Unit,
+    plan_reading_order,
+    reorder_keeping_stacking,
 )
 from a11y_pipeline.bundle.bundle import Bundle
 from a11y_pipeline.ir.ids import IdAllocator, container_id, fingerprint_source
@@ -87,7 +95,9 @@ def parse(bundle: Bundle) -> DocumentIR:
         container = Container(id=cid, kind="slide", rendered_pages=[number])
         boxes: list[Box] = []
         shapes: dict[int, BaseShape] = {}
+        drawn: list[Drawn] = []
         for z_index, shape in enumerate(slide.shapes):
+            drawn.append(Drawn(shape.shape_id, _drawn_box(shape, geometry)))
             if _hidden(shape):
                 continue
             shapes[shape.shape_id] = shape
@@ -111,9 +121,10 @@ def parse(bundle: Bundle) -> DocumentIR:
         )
         _add_diagrams_and_decoration(slide_context)
         _order_title_first(slide_context, issues)
+        _order_by_layout(slide_context, drawn, issues)
         if container.title_element_id is None:
             _add_title_to_write(slide_context)
-        _sort_reading_order(container, elements)
+        sort_reading_order(container, elements)
         containers.append(container)
     issues.extend(_duplicate_title_issues(containers, elements))
     core = presentation.core_properties
@@ -670,13 +681,143 @@ def _add_title_to_write(slide: _SlideContext) -> None:
     slide.container.attrs["title_first"] = True
 
 
-def _sort_reading_order(container: Container, elements: dict[str, Element]) -> None:
+def _drawn_box(shape: BaseShape, geometry: "_Geometry") -> tuple[float, float, float, float] | None:
+    # Where a shape is drawn, for keeping stacking. A turned shape reaches past its stored box,
+    # so it gets the box around it turned; one whose turn cannot be read may reach anywhere.
+    box = geometry.top_left(shape)
+    try:
+        degrees = float(shape.rotation)
+    except (AttributeError, ValueError):
+        return None
+    if box is None or not degrees % 180:
+        return box
+    angle = math.radians(degrees)
+    half_width, half_height = (box[2] - box[0]) / 2, (box[3] - box[1]) / 2
+    reach_x = abs(half_width * math.cos(angle)) + abs(half_height * math.sin(angle))
+    reach_y = abs(half_width * math.sin(angle)) + abs(half_height * math.cos(angle))
+    middle_x, middle_y = box[0] + half_width, box[1] + half_height
+    return (middle_x - reach_x, middle_y - reach_y, middle_x + reach_x, middle_y + reach_y)
+
+
+def _order_by_layout(slide: _SlideContext, drawn: list[Drawn], issues: list[Issue]) -> None:
+    # Put the slide's shapes in the order its layout reads, top to bottom and left to right,
+    # when that order is clear and shapes that touch keep their stacking. When the layout reads
+    # more than one way, the author's order stays and the slide is listed for a check.
+    container = slide.container
+    title_id = container.title_element_id
+    if title_id is not None and not container.attrs.get("title_first"):
+        # The title cannot come first without changing the look, which is already reported
+        return
+    skipped = set(container.attrs.get("decorative_shape_ids", []))
+    for element in slide.elements.values():
+        if element.id.startswith(f"{slide.cid}/"):
+            skipped.update(element.attrs.get("decorative_shape_ids", []))
+    skipped.update(shape_id for shape_id, shape in slide.shapes.items() if _alt_state(shape)[1])
+    members: dict[str, list[int]] = {}
+    claimed: set[int] = set()
+    elements = [slide.elements[element_id] for element_id in container.element_ids]
+    # A diagram is read as one piece: its description, then the labels on it
+    for element in sorted(elements, key=lambda element: "cluster_shape_ids" not in element.attrs):
+        if element.accessibility.decorative or "shape_id" not in element.attrs:
+            continue
+        shape_ids = element.attrs.get("cluster_shape_ids") or [element.attrs["shape_id"]]
+        readable = [
+            int(shape_id)
+            for shape_id in shape_ids
+            if shape_id not in skipped and shape_id not in claimed and shape_id in slide.shapes
+        ]
+        if readable:
+            members[element.id] = readable
+            claimed.update(readable)
+    boxes = {box.shape_id: box for box in slide.boxes}
+    units: list[Unit] = []
+    for element_id, shape_ids in members.items():
+        placed = [boxes[shape_id].bbox for shape_id in shape_ids]
+        if any(bbox is None for bbox in placed):
+            return
+        units.append(
+            Unit(
+                id=element_id,
+                bbox=_union([boxes[shape_id] for shape_id in shape_ids]),
+                stored=min(boxes[shape_id].z for shape_id in shape_ids),
+            )
+        )
+    if not units:
+        return
+    plan = plan_reading_order(units, first=title_id)
+    if plan.decision == "unclear":
+        issues.append(_order_issue(slide.number, "the layout can be read in more than one order"))
+        return
+    current = sorted(claimed, key=lambda shape_id: boxes[shape_id].z)
+    if title_id is not None:
+        title_shape = slide.elements[title_id].attrs["shape_id"]
+        current = [title_shape] + [shape_id for shape_id in current if shape_id != title_shape]
+    # Labels on a diagram usually sit over its shapes, so if reading them in place would
+    # change the stacking they keep their own order and only the pieces move
+    for labels_in_place in (True, False):
+        wanted = [
+            shape_id
+            for element_id in plan.order
+            for shape_id in _shapes_in_order(members[element_id], boxes, labels_in_place)
+        ]
+        if wanted == current:
+            return
+        order = reorder_keeping_stacking(drawn, wanted, TOUCH_MARGIN_POINTS)
+        if order is not None:
+            container.attrs["shape_order"] = order
+            return
+    if plan.decision == "reorder":
+        # Only the order of pieces is reported; labels on a diagram follow its description
+        issues.append(
+            _order_issue(slide.number, "putting it in order would change which shapes overlap")
+        )
+
+
+def _shapes_in_order(shape_ids: list[int], boxes: dict[int, Box], by_place: bool) -> list[int]:
+    # A piece's shapes as they are read: a diagram's description, then its labels, top to
+    # bottom and left to right when `by_place` and that order is clear
+    if not by_place:
+        return sorted(shape_ids, key=lambda shape_id: boxes[shape_id].z)
+    drawn = sorted(
+        (shape_id for shape_id in shape_ids if boxes[shape_id].kind != "label"),
+        key=lambda shape_id: boxes[shape_id].z,
+    )
+    labels = [
+        Unit(id=str(shape_id), bbox=boxes[shape_id].bbox or (0, 0, 0, 0), stored=boxes[shape_id].z)
+        for shape_id in shape_ids
+        if boxes[shape_id].kind == "label"
+    ]
+    plan = plan_reading_order(labels)
+    return drawn + [int(shape_id) for shape_id in plan.order]
+
+
+def _order_issue(number: int, reason: str) -> Issue:
+    return Issue(
+        element_id=None,
+        code="reading_order_unclear",
+        severity="warning",
+        message=(
+            f"Slide {number} may not be read in the order it is laid out, and it was left as it "
+            f"is because {reason}. In PowerPoint, open Arrange > Reading Order and check that "
+            "it reads in the order you present it."
+        ),
+        details={"slide": number},
+    )
+
+
+def sort_reading_order(container: Container, elements: dict[str, Element]) -> None:
     # Elements in the order a screen reader meets them in the updated deck
+    shape_order = container.attrs.get("shape_order", [])
+    order = {int(shape_id): index for index, shape_id in enumerate(shape_order)}
+
     def position(element_id: str) -> tuple[int, int]:
         element = elements[element_id]
         is_title = element_id == container.title_element_id
         if is_title and container.attrs.get("title_first"):
             return (0, 0)
+        shape_id = element.attrs.get("shape_id")
+        if order and shape_id in order:
+            return (1, order[shape_id])
         return (1, int(element.attrs.get("z_index", 0)))
 
     container.element_ids.sort(key=position)

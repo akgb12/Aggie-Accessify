@@ -6,7 +6,12 @@ from a11y_pipeline.adapters.base import PreparedDocument, WrittenDocument
 from a11y_pipeline.adapters.context import figure_context
 from a11y_pipeline.adapters.pptx.colors import deck_run_colours
 from a11y_pipeline.adapters.pptx.contrast import ContrastFinding, contrast_findings
-from a11y_pipeline.adapters.pptx.parser import parse, picture_blobs, picture_png
+from a11y_pipeline.adapters.pptx.parser import (
+    parse,
+    picture_blobs,
+    picture_png,
+    sort_reading_order,
+)
 from a11y_pipeline.adapters.pptx.preflight import preflight
 from a11y_pipeline.adapters.pptx.render import render_deck_pdf
 from a11y_pipeline.adapters.pptx.structure import touches
@@ -138,7 +143,7 @@ class PptxAdapter:
         # Write the changes into the deck and prove nothing visible changed except the text
         # colours fixed for contrast: the XML check always, and a render comparison when
         # LibreOffice is installed. A slide whose look changed has its layout changes (header
-        # rows, title moves) undone and is written again.
+        # rows, then the new reading order, then title moves) undone and is written again.
         undone: list[Issue] = []
         undo: set[str] = set()
         recolours = recolour_edits(ir)
@@ -150,7 +155,7 @@ class PptxAdapter:
             )
             if expected is not None:
                 expected_pdf = render_deck_pdf(expected, verification_root / "expected" / "render")
-        attempts = ("all", "headers", "titles")
+        attempts = ("all", "headers", "order", "titles")
         for attempt, change in enumerate(attempts, start=1):
             if change != "all":
                 undone.extend(_undo_layout_changes(ir, undo, change))
@@ -253,7 +258,7 @@ def _rendered_changes(deck: Path, original_pdf: Path, work: Path) -> set[int]:
 
 def _undo_layout_changes(ir: DocumentIR, parts: set[str], change: str) -> list[Issue]:
     # Put back one kind of layout change on slides whose look changed: table header rows
-    # first, since they restyle a table, then title moves
+    # first, since they restyle a table, then the new reading order, then title moves
     issues: list[Issue] = []
     for container in ir.containers:
         part = _part_of(ir, container.element_ids)
@@ -271,6 +276,12 @@ def _undo_layout_changes(ir: DocumentIR, parts: set[str], change: str) -> list[I
                     undone = True
             what = "Turning on the table header row"
             advice = "In PowerPoint, tick Table Design > Header Row if the new style is fine."
+        elif change == "order":
+            if container.attrs.pop("shape_order", None):
+                sort_reading_order(container, ir.elements)
+                undone = True
+            what = "Putting the slide in reading order"
+            advice = "In PowerPoint, open Arrange > Reading Order and check the order by hand."
         else:
             if container.attrs.get("move_title_first"):
                 container.attrs["move_title_first"] = False
